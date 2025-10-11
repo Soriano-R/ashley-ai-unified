@@ -41,7 +41,7 @@ By completing this tutorial, you will:
 
 ## Tutorial Structure
 
-This tutorial is divided into 6 comprehensive parts:
+This tutorial is divided into 7 comprehensive parts:
 
 ### Part 1: Introduction and Setup
 **File**: `TUTORIAL_01_INTRODUCTION.md`
@@ -112,6 +112,15 @@ Deploy Ashley AI to Hugging Face Spaces with Pro features. This part covers:
 - Gradio interface implementation
 - Pro account features and scaling
 - Custom domains and monitoring
+
+### Part 7: Quickpod GPU Server Setup
+**File**: `TUTORIAL_07_QUICKPOD_GPU_SETUP.md`
+
+Set up high-performance GPU servers for enhanced AI capabilities. This part covers:
+- GPU requirements analysis and server selection
+- Quickpod account setup and server rental
+- Remote development environment configuration
+- Performance optimization and cost management
 
 ## Getting Started
 
