@@ -41,7 +41,7 @@ By completing this tutorial, you will:
 
 ## Tutorial Structure
 
-This tutorial is divided into 7 comprehensive parts:
+This tutorial is divided into 8 comprehensive parts:
 
 ### Part 1: Introduction and Setup
 **File**: `TUTORIAL_01_INTRODUCTION.md`
@@ -121,6 +121,35 @@ Set up high-performance GPU servers for enhanced AI capabilities. This part cove
 - Quickpod account setup and server rental
 - Remote development environment configuration
 - Performance optimization and cost management
+
+### Part 8: Local Models Integration (4-Part Series)
+**Files**: `TUTORIAL_08A_LOCAL_MODELS_OVERVIEW.md`, `TUTORIAL_08B_MODEL_RECOMMENDATIONS.md`, `TUTORIAL_08C_MODEL_DOWNLOAD.md`, `TUTORIAL_08D_CODE_INTEGRATION.md`
+
+Complete local models integration for Ashley AI (7B-13B parameter range). This comprehensive series covers:
+
+#### 8A: Local Models Overview and Setup
+- Hardware requirements and storage strategy
+- Model format types and quantization explained
+- Installation prerequisites and directory structure
+- Environment configuration and optimization
+
+#### 8B: Model Recommendations by Use Case
+- Top models for coding, general use, specialized domains
+- Voice and image generation models
+- Uncensored/NSFW models for creative applications
+- Performance matrix and selection criteria
+
+#### 8C: Model Download and Installation
+- Automated download scripts and batch installers
+- Model verification and integrity checking
+- Storage management and registry setup
+- Troubleshooting common download issues
+
+#### 8D: Code Integration and Configuration
+- Complete model loading architecture
+- API endpoints and model switching system
+- Frontend components and performance optimization
+- Testing framework and benchmarking tools
 
 ## Getting Started
 
