@@ -18,10 +18,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
+from pydantic import BaseModel
 
-# Import your existing backend logic (after migration)
-# from app.config import get_settings
-# from app.orchestrator import get_orchestrator
+# Import your existing backend logic
+from app.orchestrator import ChatOrchestrator
 
 # Configure logging
 logging.basicConfig(
@@ -29,6 +29,17 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+
+class ChatRequest(BaseModel):
+    message: str
+    persona: str = "Ashley"
+    session_id: str = "default"
+
+
+class ChatResponse(BaseModel):
+    response: str
+    session_id: str
 
 
 @asynccontextmanager
@@ -58,15 +69,40 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     
+    # Initialize the orchestrator
+    orchestrator = None
+    
+    @app.on_event("startup")
+    async def startup_event():
+        nonlocal orchestrator
+        try:
+            orchestrator = ChatOrchestrator()
+            logger.info("ChatOrchestrator initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize ChatOrchestrator: {e}")
+    
     # Health check
     @app.get("/health")
     async def health_check():
         return {"status": "healthy", "service": "ashley-ai-python-microservice"}
     
-    # Placeholder endpoints (we'll implement these)
+    # Chat endpoint
     @app.post("/chat/stream")
-    async def stream_chat(request: dict):
-        return {"message": "Chat streaming endpoint - to be implemented"}
+    async def stream_chat(request: ChatRequest):
+        if not orchestrator:
+            raise HTTPException(status_code=500, detail="Orchestrator not initialized")
+        
+        try:
+            # Use the orchestrator to generate response
+            response = orchestrator.handle_chat(
+                message=request.message,
+                persona=request.persona,
+                session_id=request.session_id
+            )
+            return ChatResponse(response=response, session_id=request.session_id)
+        except Exception as e:
+            logger.error(f"Chat error: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
     
     @app.get("/chat/models")
     async def get_models():
@@ -77,7 +113,16 @@ def create_app() -> FastAPI:
     
     @app.post("/auth/validate")
     async def validate_auth(request: dict):
+        # Simple auth validation for now
         return {"valid": True, "user": {"id": "demo", "role": "user"}}
+    
+    @app.get("/personas")
+    async def get_personas():
+        return [
+            {"name": "Ashley", "description": "Friendly AI assistant"},
+            {"name": "Python Expert", "description": "Python programming specialist"},
+            {"name": "SQL Expert", "description": "Database and SQL specialist"},
+        ]
     
     return app
 
