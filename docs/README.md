@@ -41,7 +41,7 @@ By completing this tutorial, you will:
 
 ## Tutorial Structure
 
-This tutorial is divided into 5 comprehensive parts:
+This tutorial is divided into 6 comprehensive parts:
 
 ### Part 1: Introduction and Setup
 **File**: `TUTORIAL_01_INTRODUCTION.md`
@@ -95,19 +95,25 @@ Create the beautiful and functional React frontend. This part covers:
 
 **Duration**: 90-120 minutes
 
-### Part 5: Integration, Testing, and Deployment
-**File**: `TUTORIAL_05_INTEGRATION_TESTING.md`
+### Part 5: Testing and Troubleshooting
+**File**: `TUTORIAL_05_TESTING_TROUBLESHOOTING.md`
 
-Integrate all components, create tests, and prepare for deployment. This part covers:
-- Integration testing
-- Unit test creation
-- End-to-end testing
-- Docker containerization
-- CI/CD pipeline setup
-- Production deployment
-- GitHub repository setup
+Complete testing strategies and common issue resolution. This part covers:
+- Unit and integration testing setup
+- Common issues and solutions
+- Performance monitoring
+- Security considerations
 
-**Duration**: 60-90 minutes
+### Part 6: Hugging Face Deployment
+**File**: `TUTORIAL_06_HUGGINGFACE_DEPLOYMENT.md`
+
+Deploy Ashley AI to Hugging Face Spaces with Pro features. This part covers:
+- Hugging Face Spaces setup
+- Gradio interface implementation
+- Pro account features and scaling
+- Custom domains and monitoring
+
+## Getting Started
 
 ## Prerequisites
 
