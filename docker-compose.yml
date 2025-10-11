@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # Next.js Frontend
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PYTHON_SERVICE_URL=http://python-service:8001
+    depends_on:
+      - python-service
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+
+  # Python AI Microservice (using existing chatbot_env)
+  python-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    ports:
+      - "8001:8001"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ADMIN_PASSPHRASE=${ADMIN_PASSPHRASE}
+      - PYTHONPATH=/app
+    volumes:
+      - ./python-service:/app
+      - ./storage:/app/storage
+      - ../chatbot_env:/opt/venv  # Mount existing virtual environment
+
+networks:
+  default:
+    name: ashley-ai-network

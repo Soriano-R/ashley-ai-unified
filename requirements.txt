@@ -1,0 +1,13 @@
+gradio>=4.31.0
+python-dotenv
+pillow
+requests
+openai>=1.40.0
+PyMuPDF
+pandas
+numpy
+tiktoken
+matplotlib
+soundfile
+fpdf2
+pytest

@@ -1,0 +1,23 @@
+body {
+  display: flex; /* Add this line */
+  flex-direction: column; /* Ensure vertical alignment */
+  min-height: 100vh; /* Ensure the body takes full height */
+}
+
+#ashley-main {
+  display: flex; /* Ensure main area is a flex container */
+  flex: 1; /* Allow it to grow and fill available space */
+  align-items: stretch; /* Align children to stretch */
+}
+
+#ashley-chat {
+  display: flex; /* Ensure chat area is a flex container */
+  flex-direction: column; /* Stack children vertically */
+  flex: 1; /* Allow it to grow */
+  align-items: stretch; /* Stretch items horizontally */
+}
+
+#ashley-input-wrap {
+  display: flex; /* Ensure input area is a flex container */
+  align-items: stretch; /* Stretch items vertically */
+}
