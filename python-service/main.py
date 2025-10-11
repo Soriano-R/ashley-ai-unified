@@ -46,6 +46,7 @@ class ChatResponse(BaseModel):
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan management"""
     logger.info("Starting Ashley AI Python Microservice")
+    logger.info("Ashley AI Python Microservice startup complete")
     yield
     logger.info("Shutting down Ashley AI Python Microservice")
 
@@ -77,11 +78,7 @@ def create_app() -> FastAPI:
     except Exception as e:
         logger.error(f"Failed to initialize ChatOrchestrator: {e}")
         orchestrator = None
-    
-    @app.on_event("startup")
-    async def startup_event():
-        logger.info("Ashley AI Python Microservice startup complete")
-    
+
     # Health check
     @app.get("/health")
     async def health_check():
