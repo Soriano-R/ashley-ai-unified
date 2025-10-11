@@ -2,6 +2,7 @@
 Python AI Microservice for Ashley AI
 Runs internally on port 8001, called by Next.js API routes
 Uses existing chatbot_env virtual environment
+Enhanced with PyTorch models and Internet access
 """
 from __future__ import annotations
 
@@ -20,15 +21,24 @@ from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from pydantic import BaseModel
 
-# Import your existing backend logic
-from app.orchestrator import ChatOrchestrator
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+# Import your existing backend logic
+from app.orchestrator import ChatOrchestrator
+
+# Import enhanced API routes
+try:
+    from api.routes.enhanced import router as enhanced_router
+    ENHANCED_FEATURES_AVAILABLE = True
+    logger.info("Enhanced features (PyTorch + Internet) available")
+except ImportError as e:
+    logger.warning(f"Enhanced features not available: {e}")
+    ENHANCED_FEATURES_AVAILABLE = False
 
 
 class ChatRequest(BaseModel):
@@ -46,6 +56,8 @@ class ChatResponse(BaseModel):
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan management"""
     logger.info("Starting Ashley AI Python Microservice")
+    if ENHANCED_FEATURES_AVAILABLE:
+        logger.info("Enhanced features enabled")
     logger.info("Ashley AI Python Microservice startup complete")
     yield
     logger.info("Shutting down Ashley AI Python Microservice")
@@ -55,8 +67,8 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI microservice"""
     app = FastAPI(
         title="Ashley AI Python Microservice",
-        description="Internal AI service for Next.js frontend",
-        version="1.0.0",
+        description="Internal AI service with Enhanced PyTorch + Internet capabilities",
+        version="2.0.0",
         lifespan=lifespan,
         docs_url="/docs",  # Available at http://127.0.0.1:8001/docs
     )
@@ -70,6 +82,11 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     
+    # Include enhanced routes if available
+    if ENHANCED_FEATURES_AVAILABLE:
+        app.include_router(enhanced_router, prefix="/api", tags=["Enhanced Features"])
+        logger.info("Enhanced API routes registered")
+    
     # Initialize the orchestrator at module level
     try:
         from app.orchestrator import ChatOrchestrator
@@ -82,9 +99,15 @@ def create_app() -> FastAPI:
     # Health check
     @app.get("/health")
     async def health_check():
-        return {"status": "healthy", "service": "ashley-ai-python-microservice"}
+        status = {
+            "status": "healthy", 
+            "service": "ashley-ai-python-microservice",
+            "version": "2.0.0",
+            "enhanced_features": ENHANCED_FEATURES_AVAILABLE
+        }
+        return status
     
-    # Chat endpoint
+    # Legacy chat endpoint (for backward compatibility)
     @app.post("/chat/stream")
     async def stream_chat(request: ChatRequest):
         if not orchestrator:
@@ -115,10 +138,27 @@ def create_app() -> FastAPI:
     
     @app.get("/chat/models")
     async def get_models():
-        return [
+        models = [
             {"name": "gpt-4o", "description": "Advanced reasoning and vision"},
             {"name": "gpt-4o-mini", "description": "Fast and efficient"},
         ]
+        
+        # Add PyTorch models if available
+        if ENHANCED_FEATURES_AVAILABLE:
+            try:
+                from core.pytorch_manager import get_pytorch_manager
+                pytorch_manager = get_pytorch_manager()
+                pytorch_models = pytorch_manager.list_available_models()
+                for model in pytorch_models:
+                    models.append({
+                        "name": model["id"],
+                        "description": f"PyTorch: {model['description']}",
+                        "type": "pytorch"
+                    })
+            except Exception as e:
+                logger.warning(f"Could not load PyTorch models: {e}")
+        
+        return models
     
     @app.post("/auth/validate")
     async def validate_auth(request: dict):
@@ -131,6 +171,9 @@ def create_app() -> FastAPI:
             {"name": "Ashley", "description": "Friendly AI assistant"},
             {"name": "Python Expert", "description": "Python programming specialist"},
             {"name": "SQL Expert", "description": "Database and SQL specialist"},
+            {"name": "Technical Expert", "description": "Technical analysis and engineering"},
+            {"name": "Creative Muse", "description": "Creative writing and artistic inspiration"},
+            {"name": "Data Analyst", "description": "Data analysis and business intelligence"},
         ]
     
     return app

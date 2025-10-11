@@ -35,6 +35,8 @@ export interface ChatProps {
   messages: Message[]                           // Messages to display
   onSendMessage: (content: string) => void     // Function to handle sending new messages
   isLoading: boolean                           // Whether AI is currently responding
+  persona?: string                             // Current persona (Ashley, Technical, Creative, etc.)
+  onVoiceResponse?: (audioUrl: string, text: string) => void // Handle voice synthesis responses
 }
 
 // Props for the Sidebar component

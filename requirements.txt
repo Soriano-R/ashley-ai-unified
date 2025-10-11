@@ -11,3 +11,24 @@ matplotlib
 soundfile
 fpdf2
 pytest
+
+# PyTorch and ML libraries
+torch>=2.0.0
+transformers>=4.35.0
+accelerate>=0.24.0
+bitsandbytes>=0.41.0
+datasets>=2.14.0
+peft>=0.6.0
+safetensors>=0.4.0
+
+# Internet access libraries
+beautifulsoup4>=4.12.0
+selenium>=4.15.0
+wikipedia>=1.4.0
+duckduckgo-search>=3.9.0
+langchain>=0.0.330
+langchain-community>=0.0.1
+
+# API protection and caching
+redis>=5.0.0
+ratelimit>=2.2.1

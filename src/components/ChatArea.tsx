@@ -1,15 +1,28 @@
 import { useState, useRef, useEffect } from 'react'
 import { ChatProps, Message } from '@/types'
-import { PlusIcon, MicrophoneIcon, ArrowUpIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, MicrophoneIcon, ArrowUpIcon, PhotoIcon } from '@heroicons/react/24/outline'
+import ImageGeneration from './ImageGeneration'
 
 /**
- * Voice Mode Component - Replicates ChatGPT's voice functionality
+ * Voice Mode Component - Replicates ChatGPT's voice functionality with persona integration
  * Shows tooltip and handles voice mode toggle
  * Changes to send button when user is typing
  */
-function VoiceControls({ hasText, onSend }: { hasText: boolean; onSend: () => void }) {
+function VoiceControls({ 
+  hasText, 
+  onSend, 
+  persona, 
+  onVoiceResponse 
+}: { 
+  hasText: boolean; 
+  onSend: () => void;
+  persona: string;
+  onVoiceResponse: (audioUrl: string, text: string) => void;
+}) {
   const [isVoiceMode, setIsVoiceMode] = useState(false)
   const [isDictating, setIsDictating] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
   const [showTooltip, setShowTooltip] = useState<'voice' | 'dictate' | 'send' | null>(null)
 
   // Voice waveform icon (replicating ChatGPT's sound bars)
@@ -19,16 +32,158 @@ function VoiceControls({ hasText, onSend }: { hasText: boolean; onSend: () => vo
     </svg>
   )
 
-  const handleVoiceMode = () => {
-    setIsVoiceMode(!isVoiceMode)
-    console.log('Voice mode toggled:', !isVoiceMode)
-    // TODO: Implement actual voice mode functionality
+  const handleVoiceMode = async () => {
+    if (!isVoiceMode) {
+      // Start voice mode - begin recording
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        const recorder = new MediaRecorder(stream)
+        const audioChunks: BlobPart[] = []
+
+        recorder.ondataavailable = (event) => {
+          audioChunks.push(event.data)
+        }
+
+        recorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/wav' })
+          await handleVoiceInput(audioBlob)
+          stream.getTracks().forEach(track => track.stop())
+        }
+
+        recorder.start()
+        setMediaRecorder(recorder)
+        setIsRecording(true)
+        setIsVoiceMode(true)
+        console.log('Voice recording started with persona:', persona)
+      } catch (error) {
+        console.error('Failed to start voice recording:', error)
+      }
+    } else {
+      // Stop voice mode - end recording
+      if (mediaRecorder && isRecording) {
+        mediaRecorder.stop()
+        setIsRecording(false)
+        setIsVoiceMode(false)
+        setMediaRecorder(null)
+      }
+    }
   }
 
-  const handleDictate = () => {
-    setIsDictating(!isDictating)
-    console.log('Dictation toggled:', !isDictating)
-    // TODO: Implement actual dictation functionality
+  const handleVoiceInput = async (audioBlob: Blob) => {
+    try {
+      // 1. Transcribe the audio
+      const formData = new FormData()
+      formData.append('audio', audioBlob, 'recording.wav')
+
+      const transcribeResponse = await fetch('/api/voice/transcribe', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include'
+      })
+
+      if (!transcribeResponse.ok) {
+        throw new Error('Transcription failed')
+      }
+
+      const transcription = await transcribeResponse.json()
+      if (!transcription.success) {
+        throw new Error(transcription.error || 'Transcription failed')
+      }
+
+      console.log('Transcribed text:', transcription.text)
+
+      // 2. Send transcribed text as chat message (this will trigger the normal chat flow)
+      // The chat response will be generated with the correct persona
+      // We'll modify the ChatArea to handle this seamlessly
+
+      // 3. Convert the AI response to speech with persona context
+      // This will be handled after the chat response is received
+      
+      // For now, return the transcribed text to be used as input
+      return transcription.text
+
+    } catch (error) {
+      console.error('Voice input processing failed:', error)
+    }
+  }
+
+  const synthesizeResponse = async (text: string) => {
+    try {
+      const response = await fetch('/api/voice/synthesize', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text,
+          persona,
+          include_persona_context: true
+        }),
+        credentials: 'include'
+      })
+
+      if (!response.ok) {
+        throw new Error('Speech synthesis failed')
+      }
+
+      const synthesis = await response.json()
+      if (!synthesis.success) {
+        throw new Error(synthesis.error || 'Speech synthesis failed')
+      }
+
+      // Play the synthesized audio
+      const audio = new Audio(synthesis.audio_url)
+      audio.play()
+
+      return synthesis.audio_url
+
+    } catch (error) {
+      console.error('Speech synthesis failed:', error)
+    }
+  }
+
+  const handleDictate = async () => {
+    if (!isDictating) {
+      // Start dictation
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        const recorder = new MediaRecorder(stream)
+        const audioChunks: BlobPart[] = []
+
+        recorder.ondataavailable = (event) => {
+          audioChunks.push(event.data)
+        }
+
+        recorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/wav' })
+          const transcribedText = await handleVoiceInput(audioBlob)
+          
+          // Insert transcribed text into the input field
+          if (transcribedText) {
+            const event = new CustomEvent('dictationComplete', { 
+              detail: { text: transcribedText } 
+            })
+            window.dispatchEvent(event)
+          }
+          
+          stream.getTracks().forEach(track => track.stop())
+        }
+
+        recorder.start()
+        setMediaRecorder(recorder)
+        setIsDictating(true)
+        console.log('Dictation started')
+      } catch (error) {
+        console.error('Failed to start dictation:', error)
+      }
+    } else {
+      // Stop dictation
+      if (mediaRecorder) {
+        mediaRecorder.stop()
+        setIsDictating(false)
+        setMediaRecorder(null)
+      }
+    }
   }
 
   const handleSend = () => {
@@ -50,13 +205,13 @@ function VoiceControls({ hasText, onSend }: { hasText: boolean; onSend: () => vo
               : 'text-gray-400 hover:text-white hover:bg-gray-700'
           }`}
         >
-          <MicrophoneIcon className="w-5 h-5" />
+          <MicrophoneIcon className={`w-5 h-5 ${isDictating ? 'animate-pulse' : ''}`} />
         </button>
         
         {/* Dictate tooltip */}
         {showTooltip === 'dictate' && (
           <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-black text-white text-sm rounded-lg whitespace-nowrap">
-            Dictate
+            {isDictating ? 'Stop dictating' : 'Dictate'}
             <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-black"></div>
           </div>
         )}
@@ -89,13 +244,16 @@ function VoiceControls({ hasText, onSend }: { hasText: boolean; onSend: () => vo
             }`}
           >
             <SoundBarsIcon />
+            {isRecording && (
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+            )}
           </button>
         )}
         
         {/* Tooltips */}
         {showTooltip === 'voice' && !hasText && (
           <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1 bg-black text-white text-sm rounded-lg whitespace-nowrap">
-            Use voice mode
+            {isVoiceMode ? 'Stop voice mode' : `Use voice mode (${persona})`}
             <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-black"></div>
           </div>
         )}
@@ -115,9 +273,10 @@ function VoiceControls({ hasText, onSend }: { hasText: boolean; onSend: () => vo
  * PlusDropdown Component - Creates the ChatGPT-style plus menu
  * Displays a dropdown with various action options when the plus button is clicked
  */
-function PlusDropdown() {
+function PlusDropdown({ persona }: { persona: string }) {
   // State to track if dropdown is open or closed
   const [isOpen, setIsOpen] = useState(false)
+  const [isImageGenOpen, setIsImageGenOpen] = useState(false)
   // Ref to track the dropdown element for outside click detection
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -136,61 +295,100 @@ function PlusDropdown() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  const handleMenuItemClick = (action: string) => {
+    setIsOpen(false) // Close dropdown when item is clicked
+    
+    switch (action) {
+      case 'create-image':
+        setIsImageGenOpen(true)
+        break
+      case 'add-files':
+        // TODO: Implement file upload
+        console.log('Add photos & files clicked')
+        break
+      case 'deep-research':
+        // TODO: Implement deep research
+        console.log('Deep research clicked')
+        break
+      case 'agent-mode':
+        // TODO: Implement agent mode
+        console.log('Agent mode clicked')
+        break
+      case 'add-sources':
+        // TODO: Implement add sources
+        console.log('Add sources clicked')
+        break
+      case 'web-search':
+        // TODO: Implement web search
+        console.log('Web search clicked')
+        break
+      default:
+        console.log(`Unknown action: ${action}`)
+    }
+  }
+
   // Menu items configuration - matches ChatGPT's options
   const menuItems = [
-    { icon: '📎', label: 'Add photos & files', shortcut: '' },
-    { icon: '🔍', label: 'Deep research', shortcut: '' },
-    { icon: '🎨', label: 'Create image', shortcut: '' },
-    { icon: '🤖', label: 'Agent mode', shortcut: '' },
-    { icon: '📚', label: 'Add sources', shortcut: '' },
-    { icon: '🌐', label: 'Web Search', shortcut: '' }
+    { icon: '📎', label: 'Add photos & files', shortcut: '', action: 'add-files' },
+    { icon: '🔍', label: 'Deep research', shortcut: '', action: 'deep-research' },
+    { icon: '🎨', label: 'Create image', shortcut: '', action: 'create-image' },
+    { icon: '🤖', label: 'Agent mode', shortcut: '', action: 'agent-mode' },
+    { icon: '📚', label: 'Add sources', shortcut: '', action: 'add-sources' },
+    { icon: '🌐', label: 'Web Search', shortcut: '', action: 'web-search' }
   ]
 
   return (
-    <div className="relative" ref={dropdownRef}>
-      {/* Plus button that toggles the dropdown */}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          setIsOpen(!isOpen)
-        }}
-        className="p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-700"
-      >
-        <PlusIcon className="w-5 h-5" />
-      </button>
-      
-      {/* Dropdown menu - only shows when isOpen is true */}
-      {isOpen && (
-        <div className="absolute bottom-full left-0 mb-2 w-64 bg-gray-800 border border-gray-600 rounded-lg shadow-lg py-2 z-50">
-          {/* Map through menu items and create buttons */}
-          {menuItems.map((item, index) => (
-            <button
-              key={index}
-              type="button"
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                setIsOpen(false) // Close dropdown when item is clicked
-                // TODO: Add actual functionality here for each menu item
-                console.log(`Clicked: ${item.label}`)
-              }}
-              className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-gray-700 transition-colors"
-            >
-              {/* Icon for the menu item */}
-              <span className="text-lg">{item.icon}</span>
-              {/* Label text */}
-              <span className="flex-1 text-sm">{item.label}</span>
-              {/* Keyboard shortcut (if available) */}
-              {item.shortcut && (
-                <span className="text-xs text-gray-400">{item.shortcut}</span>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <>
+      <div className="relative" ref={dropdownRef}>
+        {/* Plus button that toggles the dropdown */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setIsOpen(!isOpen)
+          }}
+          className="p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-700"
+        >
+          <PlusIcon className="w-5 h-5" />
+        </button>
+        
+        {/* Dropdown menu - only shows when isOpen is true */}
+        {isOpen && (
+          <div className="absolute bottom-full left-0 mb-2 w-64 bg-gray-800 border border-gray-600 rounded-lg shadow-lg py-2 z-50">
+            {/* Map through menu items and create buttons */}
+            {menuItems.map((item, index) => (
+              <button
+                key={index}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  handleMenuItemClick(item.action)
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 text-left text-white hover:bg-gray-700 transition-colors"
+              >
+                {/* Icon for the menu item */}
+                <span className="text-lg">{item.icon}</span>
+                {/* Label text */}
+                <span className="flex-1 text-sm">{item.label}</span>
+                {/* Keyboard shortcut (if available) */}
+                {item.shortcut && (
+                  <span className="text-xs text-gray-400">{item.shortcut}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Image Generation Modal */}
+      <ImageGeneration
+        isOpen={isImageGenOpen}
+        onClose={() => setIsImageGenOpen(false)}
+        persona={persona}
+      />
+    </>
   )
 }
 
@@ -218,11 +416,29 @@ function MessageBubble({ message }: { message: Message }) {
  * ChatArea Component - Main chat interface
  * Handles message display, input, and user interactions
  */
-export default function ChatArea({ messages, onSendMessage, isLoading }: ChatProps) {
+export default function ChatArea({ messages, onSendMessage, isLoading, persona = "Ashley", onVoiceResponse }: ChatProps) {
   // State for the current input text
   const [input, setInput] = useState('')
   // Ref to scroll to the bottom of messages
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Handle dictation input
+  useEffect(() => {
+    const handleDictation = (event: CustomEvent) => {
+      setInput(event.detail.text)
+    }
+
+    window.addEventListener('dictationComplete', handleDictation as EventListener)
+    return () => {
+      window.removeEventListener('dictationComplete', handleDictation as EventListener)
+    }
+  }, [])
+
+  const handleVoiceResponse = async (audioUrl: string, text: string) => {
+    if (onVoiceResponse) {
+      onVoiceResponse(audioUrl, text)
+    }
+  }
 
   // Function to scroll to the bottom of the chat
   const scrollToBottom = () => {
@@ -348,13 +564,15 @@ export default function ChatArea({ messages, onSendMessage, isLoading }: ChatPro
             
             {/* Plus button on the left side of input */}
             <div className="absolute left-3 bottom-3">
-              <PlusDropdown />
+              <PlusDropdown persona={persona} />
             </div>
             
             {/* Voice controls on the right side of input */}
             <div className="absolute right-3 bottom-3">
               <VoiceControls 
                 hasText={input.trim().length > 0} 
+                persona={persona}
+                onVoiceResponse={handleVoiceResponse}
                 onSend={() => {
                   if (input.trim()) {
                     onSendMessage(input.trim())

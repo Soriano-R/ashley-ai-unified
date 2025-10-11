@@ -6,7 +6,10 @@ import ChatArea from './ChatArea'
 import SignIn from './SignIn'
 import SettingsModal from './SettingsModal'
 import AdminPanel from './AdminPanel'
+import PersonaSelector from './PersonaSelector'
 import { Message, Session, User } from '@/types'
+import { DEFAULT_PERSONA, getPersonaConfig } from '@/lib/personas'
+import { apiClient } from '@/lib/apiClient'
 
 /**
  * ChatInterface Component - Main container for the entire chat application
@@ -40,6 +43,9 @@ export default function ChatInterface() {
 
   // State for sidebar collapse/expand
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+
+  // State for current persona
+  const [currentPersona, setCurrentPersona] = useState(DEFAULT_PERSONA)
 
   // Store timeouts for session renaming to allow cleanup
   const [renamingTimeouts, setRenamingTimeouts] = useState<{ [sessionId: string]: NodeJS.Timeout }>({})
@@ -81,6 +87,14 @@ export default function ChatInterface() {
     // Find the session and load its messages
     const session = sessions.find(s => s.id === sessionId)
     setMessages(session?.messages || [])
+  }
+
+  /**
+   * Handle voice response audio playback
+   */
+  const handleVoiceResponse = async (audioUrl: string, text: string) => {
+    console.log('Voice response received:', { audioUrl, text })
+    // TODO: Implement voice response handling (e.g., auto-play, save audio, etc.)
   }
 
   /**
@@ -294,12 +308,28 @@ export default function ChatInterface() {
         user={currentUser || undefined}
       />
       
-      {/* Right side chat area for messages and input */}
-      <ChatArea 
-        messages={messages}
-        onSendMessage={handleSendMessage}
-        isLoading={false} // TODO: Add actual loading state when connecting to backend
-      />
+      {/* Main content area */}
+      <div className="flex flex-col flex-1">
+        {/* Header with persona selector */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-700 bg-gray-800">
+          <h1 className="text-xl font-semibold text-white">Ashley AI</h1>
+          <PersonaSelector 
+            currentPersona={currentPersona}
+            onPersonaChange={setCurrentPersona}
+          />
+        </div>
+        
+        {/* Chat area */}
+        <div className="flex-1">
+          <ChatArea 
+            messages={messages}
+            onSendMessage={handleSendMessage}
+            isLoading={false} // TODO: Add actual loading state when connecting to backend
+            persona={currentPersona}
+            onVoiceResponse={handleVoiceResponse}
+          />
+        </div>
+      </div>
 
       {/* Settings Modal */}
       <SettingsModal 
