@@ -1,10 +1,6 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  // Enable experimental features for React 19
-  experimental: {
-    reactCompiler: true,
-  },
-  
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
   // API route configuration
   async rewrites() {
     return [
@@ -18,17 +14,6 @@ const nextConfig = {
   // Environment variables
   env: {
     PYTHON_SERVICE_URL: process.env.PYTHON_SERVICE_URL || 'http://127.0.0.1:8001',
-  },
-  
-  // Disable x-powered-by header
-  poweredByHeader: false,
-  
-  // Compress responses
-  compress: true,
-  
-  // Image optimization
-  images: {
-    domains: ['localhost'],
   },
 };
 

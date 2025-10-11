@@ -69,17 +69,18 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     
-    # Initialize the orchestrator
-    orchestrator = None
+    # Initialize the orchestrator at module level
+    try:
+        from app.orchestrator import ChatOrchestrator
+        orchestrator = ChatOrchestrator()
+        logger.info("ChatOrchestrator initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize ChatOrchestrator: {e}")
+        orchestrator = None
     
     @app.on_event("startup")
     async def startup_event():
-        nonlocal orchestrator
-        try:
-            orchestrator = ChatOrchestrator()
-            logger.info("ChatOrchestrator initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize ChatOrchestrator: {e}")
+        logger.info("Ashley AI Python Microservice startup complete")
     
     # Health check
     @app.get("/health")
@@ -93,13 +94,24 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=500, detail="Orchestrator not initialized")
         
         try:
+            # Create a basic chat state for the request
+            from app.state import ChatState
+            state = ChatState(session_id=request.session_id)
+            state.persona = request.persona or "Ashley"
+            
             # Use the orchestrator to generate response
-            response = orchestrator.handle_chat(
-                message=request.message,
-                persona=request.persona,
-                session_id=request.session_id
+            result_generator = orchestrator.stream_reply(
+                state=state,
+                user_text=request.message
             )
-            return ChatResponse(response=response, session_id=request.session_id)
+            
+            # Collect the streaming response
+            response_text = ""
+            for chunk in result_generator:
+                if isinstance(chunk, str):
+                    response_text += chunk
+            
+            return ChatResponse(response=response_text, session_id=request.session_id)
         except Exception as e:
             logger.error(f"Chat error: {e}")
             raise HTTPException(status_code=500, detail=str(e))

@@ -30,3 +30,5 @@
 {"session_id": "4c29daeb281445dba61f5d0400c218cf", "role": "assistant", "content": "Hi, my love! I'm here and ready to support you in whatever you need."}
 {"session_id": "2a7f5a4b9a6d41149c728c535a6cdc0f", "role": "user", "content": "Hello team, say hi in two sentences"}
 {"session_id": "2a7f5a4b9a6d41149c728c535a6cdc0f", "role": "assistant", "content": "Hi, everyone! I’m so excited to connect and support you all in our journey together!"}
+{"session_id": "test123", "role": "user", "content": "Hello Ashley"}
+{"session_id": "test123", "role": "assistant", "content": "Hi, babe! How’s your day going?"}
