@@ -71,6 +71,61 @@ npm run build
 npm start
 ```
 
+
+## Supported AI Models
+
+Ashley AI Unified supports a wide range of models for both general and specialized tasks. Models are available in multiple formats:
+
+- **PyTorch**: High-performance, GPU-accelerated inference
+- **GGUF**: Lightweight, CPU-friendly, quantized for local/offline use
+- **API**: Cloud-based inference (OpenAI GPT)
+
+### Model List
+
+| Key | Name | Max Length | Format | Category | Description |
+|-----|------|------------|--------|----------|-------------|
+| code-llama-13b | CodeLlama-13b-Instruct-hf | 16,384 | PyTorch | Coding | Code Llama 13B - Specialized for coding |
+| code-llama-13b-gguf | CodeLlama-13b-Instruct-hf | 16,384 | GGUF | Coding | Code Llama 13B - Specialized for coding (GGUF) |
+| code-llama-7b | CodeLlama-7b-Python-hf | 8,192 | PyTorch | Coding | CodeLlama 7B Python HF - Python code generation |
+| code-llama-7b-gguf | CodeLlama-7b-Python-hf | 8,192 | GGUF | Coding | CodeLlama 7B Python HF - Python code generation (GGUF) |
+| deepseek-coder-v2 | DeepSeek-Coder-V2-Instruct | 8,192 | PyTorch | Coding | DeepSeek Coder V2 Instruct - Coding, code completion |
+| deepseek-coder-v2-gguf | DeepSeek-Coder-V2-Instruct | 8,192 | GGUF | Coding | DeepSeek Coder V2 Instruct - Coding, code completion (GGUF) |
+| deepseek-r1 | DeepSeek-R1 | 8,192 | PyTorch | Coding | DeepSeek R1 - Coding, general AI |
+| deepseek-r1-gguf | DeepSeek-R1 | 8,192 | GGUF | Coding | DeepSeek R1 - Coding, general AI (GGUF) |
+| deepseek-math-7b | DeepSeek-Math-7B-Instruct | 8,192 | PyTorch | Math | DeepSeek Math 7B Instruct - Math, reasoning |
+| deepseek-math-7b-gguf | DeepSeek-Math-7B-Instruct | 8,192 | GGUF | Math | DeepSeek Math 7B Instruct - Math, reasoning (GGUF) |
+| qwen-2.5-7b | Qwen2.5-7B-Instruct | 32,768 | PyTorch | General | Qwen 2.5 7B - Long context support |
+| qwen-2.5-7b-gguf | Qwen2.5-7B-Instruct | 32,768 | GGUF | General | Qwen 2.5 7B - Long context support (GGUF) |
+| undiopenhermes-7b | UndiOpenHermes-2.5-Mistral-7B | 8,192 | PyTorch | NSFW | UndiOpenHermes 2.5 Mistral 7B - NSFW, uncensored |
+| undiopenhermes-7b-gguf | UndiOpenHermes-2.5-Mistral-7B | 8,192 | GGUF | NSFW | UndiOpenHermes 2.5 Mistral 7B - NSFW, uncensored (GGUF) |
+| openhermes-7b-gptq | OpenHermes-2.5-Mistral-7B-GPTQ | 8,192 | PyTorch | NSFW | OpenHermes 2.5 Mistral 7B GPTQ - NSFW, uncensored |
+| openhermes-7b-gptq-gguf | OpenHermes-2.5-Mistral-7B-GPTQ | 8,192 | GGUF | NSFW | OpenHermes 2.5 Mistral 7B GPTQ - NSFW, uncensored (GGUF) |
+| nous-hermes-7b-gptq | Nous-Hermes-2-Mistral-7B-GPTQ | 8,192 | PyTorch | NSFW | Nous Hermes 2 Mistral 7B GPTQ - NSFW, uncensored |
+| nous-hermes-7b-gptq-gguf | Nous-Hermes-2-Mistral-7B-GPTQ | 8,192 | GGUF | NSFW | Nous Hermes 2 Mistral 7B GPTQ - NSFW, uncensored (GGUF) |
+| chronos-hermes-13b-gptq | Chronos-Hermes-13B-GPTQ | 16,384 | PyTorch | NSFW | Chronos Hermes 13B GPTQ - NSFW, uncensored |
+| chronos-hermes-13b-gptq-gguf | Chronos-Hermes-13B-GPTQ | 16,384 | GGUF | NSFW | Chronos Hermes 13B GPTQ - NSFW, uncensored (GGUF) |
+| undiplatypus2-13b-gptq | UndiPlatypus2-13B-GPTQ | 16,384 | PyTorch | NSFW | UndiPlatypus2 13B GPTQ - NSFW, uncensored |
+| undiplatypus2-13b-gptq-gguf | UndiPlatypus2-13B-GPTQ | 16,384 | GGUF | NSFW | UndiPlatypus2 13B GPTQ - NSFW, uncensored (GGUF) |
+| openorca-platypus2-13b-gptq | OpenOrca-Platypus2-13B-GPTQ | 16,384 | PyTorch | NSFW | OpenOrca Platypus2 13B GPTQ - NSFW, uncensored |
+| openorca-platypus2-13b-gptq-gguf | OpenOrca-Platypus2-13B-GPTQ | 16,384 | GGUF | NSFW | OpenOrca Platypus2 13B GPTQ - NSFW, uncensored (GGUF) |
+| openai | openai/gpt-3.5-turbo | 4,096 | API | General | OpenAI GPT-3.5 Turbo (API-based, cloud inference) |
+
+See `python-service/pytorch_models.json` and `model_list_functional.csv` for full details.
+
+## Recent Code Changes
+
+- **UserManager Modal**: Refactored for business-style UI, single source of truth, and password field support
+- **Admin Features**: Add User modal, improved validation, preview, and branding
+- **Model Management**: Unified PyTorch and GGUF model configs, CSV export for model list
+- **Persona Mapping**: Improved persona file handling and mapping
+- **Bug Fixes**: JSX structure cleanup, duplicate modal code removed
+
+## CSV Export
+
+All supported models are available in CSV format for easy reference and integration:
+
+- `model_list_functional.csv`: Lists all models, formats, categories, and descriptions
+
 ## Benefits of This Architecture
 
 **Single codebase and deployment**  
