@@ -3,26 +3,50 @@
     "llama-3.1-8b": {
       "model_name": "meta-llama/Meta-Llama-3.1-8B-Instruct",
       "max_length": 8192,
-      "quantization": "8bit",
+      "quantization": "pytorch",
       "description": "Llama 3.1 8B - Balanced performance and memory"
+      },
+      "llama-3.1-8b-gguf": {
+        "model_name": "meta-llama/Meta-Llama-3.1-8B-Instruct",
+        "max_length": 8192,
+        "quantization": "gguf",
+        "description": "Llama 3.1 8B - Balanced performance and memory (GGUF)"
     },
     "llama-3.1-70b": {
       "model_name": "meta-llama/Meta-Llama-3.1-70B-Instruct",
       "max_length": 8192,
-      "quantization": "4bit",
+      "quantization": "pytorch",
       "description": "Llama 3.1 70B - High performance (requires >20GB GPU)"
+      },
+      "llama-3.1-70b-gguf": {
+        "model_name": "meta-llama/Meta-Llama-3.1-70B-Instruct",
+        "max_length": 8192,
+        "quantization": "gguf",
+        "description": "Llama 3.1 70B - High performance (GGUF)"
     },
     "qwen-2.5-7b": {
       "model_name": "Qwen/Qwen2.5-7B-Instruct",
       "max_length": 32768,
-      "quantization": "8bit",
+      "quantization": "pytorch",
       "description": "Qwen 2.5 7B - Long context support"
+      },
+      "qwen-2.5-7b-gguf": {
+        "model_name": "Qwen/Qwen2.5-7B-Instruct",
+        "max_length": 32768,
+        "quantization": "gguf",
+        "description": "Qwen 2.5 7B - Long context support (GGUF)"
     },
     "code-llama-13b": {
       "model_name": "codellama/CodeLlama-13b-Instruct-hf",
       "max_length": 16384,
-      "quantization": "8bit",
+      "quantization": "pytorch",
       "description": "Code Llama 13B - Specialized for coding"
+      },
+      "code-llama-13b-gguf": {
+        "model_name": "codellama/CodeLlama-13b-Instruct-hf",
+        "max_length": 16384,
+        "quantization": "gguf",
+        "description": "Code Llama 13B - Specialized for coding (GGUF)"
     }
   },
   "default_model": "llama-3.1-8b",

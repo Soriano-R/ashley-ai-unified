@@ -7,6 +7,7 @@ import SignIn from './SignIn'
 import SettingsModal from './SettingsModal'
 import AdminPanel from './AdminPanel'
 import PersonaSelector from './PersonaSelector'
+import UserManager from './UserManager'
 import { Message, Session, User } from '@/types'
 import { DEFAULT_PERSONA, getPersonaConfig } from '@/lib/personas'
 import { apiClient } from '@/lib/apiClient'
@@ -23,12 +24,16 @@ export default function ChatInterface() {
   
   // Settings modal state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  
+
   // Admin panel state
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false)
-  
-  // FOR DEBUGGING: Uncomment the line below to bypass authentication
-  // const [isAuthenticated, setIsAuthenticated] = useState(true)
+
+  // User manager modal state
+  const [isUserManagerOpen, setIsUserManagerOpen] = useState(false)
+
+  // Handler to open UserManager modal
+  const handleOpenUserManager = () => setIsUserManagerOpen(true)
+  const handleCloseUserManager = () => setIsUserManagerOpen(false)
   
   // State for all chat sessions - starts with one default session
   const [sessions, setSessions] = useState<Session[]>([
@@ -288,7 +293,7 @@ export default function ChatInterface() {
 
   // Show sign-in screen if not authenticated
   if (!isAuthenticated) {
-    return <SignIn onSignIn={handleSignIn} isLoading={isLoading} />
+  return <SignIn onSignIn={handleSignIn} isLoading={isLoading} />
   }
 
   return (
@@ -305,9 +310,10 @@ export default function ChatInterface() {
         onSignOut={handleSignOut}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
+        onOpenUserManager={handleOpenUserManager}
         user={currentUser || undefined}
       />
-      
+
       {/* Main content area */}
       <div className="flex flex-col flex-1">
         {/* Header with persona selector */}
@@ -318,7 +324,7 @@ export default function ChatInterface() {
             onPersonaChange={setCurrentPersona}
           />
         </div>
-        
+
         {/* Chat area */}
         <div className="flex-1">
           <ChatArea 
@@ -344,6 +350,14 @@ export default function ChatInterface() {
           isOpen={isAdminPanelOpen}
           onClose={() => setIsAdminPanelOpen(false)}
           user={currentUser}
+        />
+      )}
+
+      {/* User Manager Modal - Only accessible to admin users */}
+      {currentUser?.role === 'admin' && (
+        <UserManager
+          isOpen={isUserManagerOpen}
+          onClose={handleCloseUserManager}
         />
       )}
     </div>

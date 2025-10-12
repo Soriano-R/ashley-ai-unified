@@ -50,5 +50,6 @@ export interface SidebarProps {
   onSignOut?: () => void                       // Optional function to handle sign out
   onOpenSettings?: () => void                  // Optional function to open settings modal
   onOpenAdminPanel?: () => void                // Optional function to open admin panel (admin only)
+  onOpenUserManager?: () => void               // Optional function to open user management panel/modal
   user?: User                                  // Current user information
 }

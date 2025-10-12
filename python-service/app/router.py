@@ -72,6 +72,24 @@ def select_model(context: RoutingContext) -> ModelChoice:
     long_input = len(text_lower) > 200 or context.history_message_count > 20
     advanced_persona = any(name.lower() in {"ml_ai_prompt", "hybrid", "csharp_dotnet_prompt"} for name in context.persona_names)
 
+    # Assign model based on persona name
+    persona_map = {
+        "Ashley": settings.default_model,
+        "Python Expert": "deepseek-coder",
+        "NSFW": "undiopenhermes",
+        "Platypus": "platypus2-13b-gptq",
+        "OpenHermes": "openhermes-2.5-mistral-7b-gptq",
+        "NousHermes": "nous-hermes-2-mistral-7b-gptq",
+        "ChronosHermes": "chronos-hermes-13b-gptq",
+        "UndiPlatypus": "undiplatypus2-13b-gptq"
+    }
+    for persona in context.persona_names:
+        if persona in persona_map:
+            model = persona_map[persona]
+            reason = f"Persona-based routing: {persona}"
+            tools = _derive_tools(context, model)
+            return ModelChoice(model=model, reason=reason, tools=tools)
+
     if needs_vision:
         model = settings.vision_model
         reason = "Vision request"

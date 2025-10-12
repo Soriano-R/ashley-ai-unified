@@ -34,13 +34,28 @@ interface Transaction {
 }
 
 export default function UserManager({ isOpen, onClose }: UserManagerProps) {
+  // Add User modal state
+  // Add User modal state
   const [activeTab, setActiveTab] = useState<'users' | 'payments' | 'analytics'>('users')
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedUser, setSelectedUser] = useState<ManagedUser | null>(null)
   const [showPaymentHistory, setShowPaymentHistory] = useState(false)
 
-  // Mock user data - in production, this would come from backend
-  const [users] = useState<ManagedUser[]>([
+  // Add User modal state
+  const [isAddUserOpen, setIsAddUserOpen] = useState(false)
+  const [newUser, setNewUser] = useState({
+    name: '',
+    email: '',
+    password: '',
+    role: 'user',
+    subscriptionPlan: 'free',
+    location: '',
+    age: '',
+    preferences: ''
+  })
+
+  // User data
+  const [users, setUsers] = useState<ManagedUser[]>([
     {
       id: '1',
       email: 'admin@ashley.ai',
@@ -187,126 +202,187 @@ export default function UserManager({ isOpen, onClose }: UserManagerProps) {
 
         {/* Payment History Modal */}
         {showPaymentHistory && selectedUser && (
-          <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-10">
-            <div className="bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl max-h-[80vh] flex flex-col">
-              <div className="flex items-center justify-between p-6 border-b border-gray-700">
-                <h3 className="text-lg font-semibold text-white">
-                  Payment History - {selectedUser.name}
-                </h3>
+          <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-0 overflow-hidden border border-gray-200">
+              {/* Branding/Header */}
+              <div className="flex items-center justify-between px-8 py-6 bg-gray-100 border-b border-gray-200">
+                <div className="flex items-center gap-3">
+                  <img src="/icon.png" alt="Ashley AI" className="w-8 h-8" />
+                  <span className="text-xl font-bold text-gray-900">Ashley AI Admin</span>
+                </div>
                 <button
-                  onClick={() => setShowPaymentHistory(false)}
-                  className="text-gray-400 hover:text-white transition-colors"
+                  onClick={() => setIsAddUserOpen(false)}
+                  className="text-gray-400 hover:text-gray-700 transition-colors"
                 >
                   <XMarkIcon className="w-6 h-6" />
                 </button>
               </div>
-
-              <div className="flex-1 overflow-y-auto p-6">
-                <div className="space-y-6">
-                  {/* Payment Statistics */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-gray-700 rounded-lg p-4">
-                      <div className="text-sm text-gray-400">Total Spent</div>
-                      <div className="text-xl font-semibold text-white">
-                        {formatCurrency(
-                          getUserTransactions(selectedUser.id)
-                            .filter(txn => txn.status === 'completed')
-                            .reduce((sum, txn) => sum + txn.amount, 0)
-                        )}
-                      </div>
+              <form
+                className="px-8 py-6"
+                onSubmit={e => {
+                  e.preventDefault();
+                  setUsers(prev => [
+                    ...prev,
+                    {
+                      id: Date.now().toString(),
+                      email: newUser.email,
+                      name: newUser.name,
+                      role: newUser.role as 'admin' | 'user',
+                      createdAt: new Date(),
+                      lastActive: new Date(),
+                      totalSessions: 0,
+                      tokensUsed: 0,
+                      subscriptionPlan: newUser.subscriptionPlan as 'free' | 'premium' | 'enterprise',
+                      isArchived: false,
+                      demographics: {
+                        age: newUser.age ? parseInt(newUser.age) : undefined,
+                        location: newUser.location,
+                        preferences: newUser.preferences ? newUser.preferences.split(',').map(p => p.trim()) : []
+                      }
+                    }
+                  ])
+                  setIsAddUserOpen(false)
+                  setNewUser({
+                    name: '',
+                    email: '',
+                    password: '',
+                    role: 'user',
+                    subscriptionPlan: 'free',
+                    location: '',
+                    age: '',
+                    preferences: ''
+                  })
+                }}
+              >
+                {/* Section: Account Info */}
+                <div className="mb-6">
+                  <h4 className="text-lg font-semibold text-gray-800 mb-2">Account Info</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Name</label>
+                      <input
+                        type="text"
+                        placeholder="Full Name"
+                        value={newUser.name}
+                        onChange={e => setNewUser({ ...newUser, name: e.target.value })}
+                        className="w-full p-3 rounded border border-gray-300 bg-gray-50 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                      />
                     </div>
-                    <div className="bg-gray-700 rounded-lg p-4">
-                      <div className="text-sm text-gray-400">Transactions</div>
-                      <div className="text-xl font-semibold text-white">
-                        {getUserTransactions(selectedUser.id).length}
-                      </div>
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Email</label>
+                      <input
+                        type="email"
+                        placeholder="Email Address"
+                        value={newUser.email}
+                        onChange={e => setNewUser({ ...newUser, email: e.target.value })}
+                        className="w-full p-3 rounded border border-gray-300 bg-gray-50 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                      />
                     </div>
-                    <div className="bg-gray-700 rounded-lg p-4">
-                      <div className="text-sm text-gray-400">Current Plan</div>
-                      <div className="text-xl font-semibold text-white capitalize">
-                        {selectedUser.subscriptionPlan}
-                      </div>
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Password</label>
+                      <input
+                        type="password"
+                        placeholder="Password"
+                        value={newUser.password}
+                        onChange={e => setNewUser({ ...newUser, password: e.target.value })}
+                        className="w-full p-3 rounded border border-gray-300 bg-gray-50 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        required
+                      />
                     </div>
-                  </div>
-
-                  {/* Transaction History */}
-                  <div>
-                    <h4 className="text-lg font-medium text-white mb-4">Transaction History</h4>
-                    <div className="space-y-3">
-                      {getUserTransactions(selectedUser.id).map(transaction => (
-                        <div key={transaction.id} className="bg-gray-900 rounded-lg p-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-3">
-                                <div className={`w-3 h-3 rounded-full ${
-                                  transaction.status === 'completed' ? 'bg-green-400' :
-                                  transaction.status === 'pending' ? 'bg-yellow-400' : 'bg-red-400'
-                                }`}></div>
-                                <span className="font-medium text-white">{transaction.description}</span>
-                                <span className={`px-2 py-1 rounded-full text-xs ${
-                                  transaction.type === 'subscription' ? 'bg-blue-600 text-blue-100' :
-                                  transaction.type === 'usage' ? 'bg-purple-600 text-purple-100' :
-                                  'bg-green-600 text-green-100'
-                                }`}>
-                                  {transaction.type}
-                                </span>
-                              </div>
-                              <div className="text-sm text-gray-400 mt-1">
-                                {formatDate(transaction.date)} • ID: {transaction.id}
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="font-semibold text-white">
-                                {formatCurrency(transaction.amount, transaction.currency)}
-                              </div>
-                              <div className={`text-sm capitalize ${
-                                transaction.status === 'completed' ? 'text-green-400' :
-                                transaction.status === 'pending' ? 'text-yellow-400' : 'text-red-400'
-                              }`}>
-                                {transaction.status}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      
-                      {getUserTransactions(selectedUser.id).length === 0 && (
-                        <div className="text-center py-8 text-gray-400">
-                          No transactions found for this user.
-                        </div>
-                      )}
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Role</label>
+                      <select
+                        value={newUser.role}
+                        onChange={e => setNewUser({ ...newUser, role: e.target.value })}
+                        className="w-full p-3 rounded border border-gray-300 bg-gray-50 text-gray-900"
+                      >
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                      </select>
                     </div>
                   </div>
                 </div>
-              </div>
+                {/* Section: Profile Details */}
+                <div className="mb-6">
+                  <h4 className="text-lg font-semibold text-gray-800 mb-2">Profile Details</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Subscription Plan</label>
+                      <select
+                        value={newUser.subscriptionPlan}
+                        onChange={e => setNewUser({ ...newUser, subscriptionPlan: e.target.value })}
+                        className="w-full p-3 rounded border border-gray-300 bg-gray-50 text-gray-900"
+                      >
+                        <option value="free">Free</option>
+                        <option value="premium">Premium</option>
+                        <option value="enterprise">Enterprise</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Location</label>
+                      <input
+                        type="text"
+                        placeholder="Location"
+                        value={newUser.location}
+                        onChange={e => setNewUser({ ...newUser, location: e.target.value })}
+                        className="w-full p-3 rounded border border-gray-300 bg-gray-50 text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Age</label>
+                      <input
+                        type="number"
+                        placeholder="Age"
+                        value={newUser.age}
+                        onChange={e => setNewUser({ ...newUser, age: e.target.value })}
+                        className="w-full p-3 rounded border border-gray-300 bg-gray-50 text-gray-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Preferences</label>
+                      <input
+                        type="text"
+                        placeholder="Preferences (comma separated)"
+                        value={newUser.preferences}
+                        onChange={e => setNewUser({ ...newUser, preferences: e.target.value })}
+                        className="w-full p-3 rounded border border-gray-300 bg-gray-50 text-gray-900"
+                      />
+                    </div>
+                  </div>
+                </div>
+                {/* Preview Section */}
+                <div className="mb-6">
+                  <h4 className="text-lg font-semibold text-gray-800 mb-2">Preview</h4>
+                  <div className="bg-gray-50 border border-gray-200 rounded p-4 text-gray-700">
+                    <div><strong>Name:</strong> {newUser.name || <span className="text-gray-400">(none)</span>}</div>
+                    <div><strong>Email:</strong> {newUser.email || <span className="text-gray-400">(none)</span>}</div>
+                    <div><strong>Role:</strong> {newUser.role}</div>
+                    <div><strong>Plan:</strong> {newUser.subscriptionPlan}</div>
+                    <div><strong>Location:</strong> {newUser.location || <span className="text-gray-400">(none)</span>}</div>
+                    <div><strong>Age:</strong> {newUser.age || <span className="text-gray-400">(none)</span>}</div>
+                    <div><strong>Preferences:</strong> {newUser.preferences || <span className="text-gray-400">(none)</span>}</div>
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2 mt-4">
+                  <button
+                    type="button"
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 border border-gray-300"
+                    onClick={() => setIsAddUserOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 shadow"
+                  >
+                    Add User
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
-        )}
-
-        {/* Tab Navigation */}
-        <div className="flex border-b border-gray-700">
-          {[
-            { id: 'users', name: 'Users', icon: MagnifyingGlassIcon },
-            { id: 'payments', name: 'Payments', icon: CreditCardIcon },
-            { id: 'analytics', name: 'Analytics', icon: ChartBarIcon }
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as 'users' | 'payments' | 'analytics')}
-              className={`flex items-center gap-2 px-6 py-3 border-b-2 transition-colors ${
-                activeTab === tab.id
-                  ? 'border-blue-500 text-blue-400'
-                  : 'border-transparent text-gray-400 hover:text-white'
-              }`}
-            >
-              <tab.icon className="w-4 h-4" />
-              {tab.name}
-            </button>
-          ))}
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
           {activeTab === 'users' && (
             <div className="space-y-6">
               {/* Search and Controls */}
@@ -321,10 +397,198 @@ export default function UserManager({ isOpen, onClose }: UserManagerProps) {
                     className="w-full pl-10 pr-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
-                <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                <button
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  onClick={() => setIsAddUserOpen(true)}
+                >
                   <UserPlusIcon className="w-4 h-4" />
                   Add User
                 </button>
+              </div>
+              {/* Add User Modal - business style, only one instance */}
+              {isAddUserOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50">
+                  <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-0 overflow-hidden border border-gray-200">
+                    {/* Branding/Header */}
+                    <div className="flex items-center justify-between px-8 py-6 bg-gray-100 border-b border-gray-200">
+                      <div className="flex items-center gap-3">
+                        <img src="/icon.png" alt="Ashley AI" className="w-8 h-8" />
+                        <span className="text-xl font-bold text-gray-900">Ashley AI Admin</span>
+                      </div>
+                      <button
+                        onClick={() => setIsAddUserOpen(false)}
+                        className="text-gray-400 hover:text-gray-700 transition-colors"
+                      >
+                        <XMarkIcon className="w-6 h-6" />
+                      </button>
+                    </div>
+                    <form
+                      className="px-8 py-6"
+                      onSubmit={e => {
+                        e.preventDefault();
+                        setUsers(prev => [
+                          ...prev,
+                          {
+                            id: Date.now().toString(),
+                            email: newUser.email,
+                            name: newUser.name,
+                            role: newUser.role as 'admin' | 'user',
+                            createdAt: new Date(),
+                            lastActive: new Date(),
+                            totalSessions: 0,
+                            tokensUsed: 0,
+                            subscriptionPlan: newUser.subscriptionPlan as 'free' | 'premium' | 'enterprise',
+                            isArchived: false,
+                            demographics: {
+                              age: newUser.age ? parseInt(newUser.age) : undefined,
+                              location: newUser.location,
+                              preferences: newUser.preferences ? newUser.preferences.split(',').map(p => p.trim()) : []
+                            }
+                          }
+                        ])
+                        setIsAddUserOpen(false)
+                        setNewUser({
+                          name: '',
+                          email: '',
+                          password: '',
+                          role: 'user',
+                          subscriptionPlan: 'free',
+                          location: '',
+                          age: '',
+                          preferences: ''
+                        })
+                      }}
+                    >
+                      {/* Section: Account Info */}
+                      <div className="mb-6">
+                        <h4 className="text-lg font-semibold text-gray-800 mb-2">Account Info</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1">Name</label>
+                            <input
+                              type="text"
+                              placeholder="Full Name"
+                              value={newUser.name}
+                              onChange={e => setNewUser({ ...newUser, name: e.target.value })}
+                              className="w-full p-3 rounded border border-gray-300 bg-gray-50 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1">Email</label>
+                            <input
+                              type="email"
+                              placeholder="Email Address"
+                              value={newUser.email}
+                              onChange={e => setNewUser({ ...newUser, email: e.target.value })}
+                              className="w-full p-3 rounded border border-gray-300 bg-gray-50 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1">Password</label>
+                            <input
+                              type="password"
+                              placeholder="Password"
+                              value={newUser.password}
+                              onChange={e => setNewUser({ ...newUser, password: e.target.value })}
+                              className="w-full p-3 rounded border border-gray-300 bg-gray-50 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1">Role</label>
+                            <select
+                              value={newUser.role}
+                              onChange={e => setNewUser({ ...newUser, role: e.target.value })}
+                              className="w-full p-3 rounded border border-gray-300 bg-gray-50 text-gray-900"
+                            >
+                              <option value="user">User</option>
+                              <option value="admin">Admin</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Section: Profile Details */}
+                      <div className="mb-6">
+                        <h4 className="text-lg font-semibold text-gray-800 mb-2">Profile Details</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1">Subscription Plan</label>
+                            <select
+                              value={newUser.subscriptionPlan}
+                              onChange={e => setNewUser({ ...newUser, subscriptionPlan: e.target.value })}
+                              className="w-full p-3 rounded border border-gray-300 bg-gray-50 text-gray-900"
+                            >
+                              <option value="free">Free</option>
+                              <option value="premium">Premium</option>
+                              <option value="enterprise">Enterprise</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1">Location</label>
+                            <input
+                              type="text"
+                              placeholder="Location"
+                              value={newUser.location}
+                              onChange={e => setNewUser({ ...newUser, location: e.target.value })}
+                              className="w-full p-3 rounded border border-gray-300 bg-gray-50 text-gray-900"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1">Age</label>
+                            <input
+                              type="number"
+                              placeholder="Age"
+                              value={newUser.age}
+                              onChange={e => setNewUser({ ...newUser, age: e.target.value })}
+                              className="w-full p-3 rounded border border-gray-300 bg-gray-50 text-gray-900"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-1">Preferences</label>
+                            <input
+                              type="text"
+                              placeholder="Preferences (comma separated)"
+                              value={newUser.preferences}
+                              onChange={e => setNewUser({ ...newUser, preferences: e.target.value })}
+                              className="w-full p-3 rounded border border-gray-300 bg-gray-50 text-gray-900"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      {/* Preview Section */}
+                      <div className="mb-6">
+                        <h4 className="text-lg font-semibold text-gray-800 mb-2">Preview</h4>
+                        <div className="bg-gray-50 border border-gray-200 rounded p-4 text-gray-700">
+                          <div><strong>Name:</strong> {newUser.name || <span className="text-gray-400">(none)</span>}</div>
+                          <div><strong>Email:</strong> {newUser.email || <span className="text-gray-400">(none)</span>}</div>
+                          <div><strong>Role:</strong> {newUser.role}</div>
+                          <div><strong>Plan:</strong> {newUser.subscriptionPlan}</div>
+                          <div><strong>Location:</strong> {newUser.location || <span className="text-gray-400">(none)</span>}</div>
+                          <div><strong>Age:</strong> {newUser.age || <span className="text-gray-400">(none)</span>}</div>
+                          <div><strong>Preferences:</strong> {newUser.preferences || <span className="text-gray-400">(none)</span>}</div>
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2 mt-4">
+                        <button
+                          type="button"
+                          className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 border border-gray-300"
+                          onClick={() => setIsAddUserOpen(false)}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 shadow"
+                        >
+                          Add User
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              )}
               </div>
 
               {/* Users List */}
@@ -562,7 +826,7 @@ export default function UserManager({ isOpen, onClose }: UserManagerProps) {
             </div>
           )}
         </div>
-      </div>
+      )}
     </div>
-  )
+  );
 }

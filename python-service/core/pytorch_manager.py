@@ -30,7 +30,13 @@ class PyTorchModelManager:
     """
     
     def __init__(self, config_path: str = "pytorch_models.json"):
+        import os
+        self.repo_regular = os.getenv("HF_REPO_REGULAR")
+        self.repo_nsfw = os.getenv("HF_REPO_NSFW")
+        self.repo_gguf_regular = os.getenv("HF_REPO_GGUF_REGULAR")
+        self.repo_gguf_nsfw = os.getenv("HF_REPO_GGUF_NSFW")
         self.config_path = config_path
+        self.config = {"models": {}}  # Initialize config as a dict
         self.models: Dict[str, Dict] = {}
         self.current_model = None
         self.current_tokenizer = None
@@ -51,21 +57,90 @@ class PyTorchModelManager:
             return "cpu"
     
     def load_config(self):
+        # Add requested NSFW/uncensored models
+        self.config["models"]["codellama-13b-python-hf"] = {
+            "model_name": "meta-llama/CodeLlama-13b-Python-hf",
+            "description": "CodeLlama 13B Python HF (no permission required)"
+        }
+        self.config["models"]["codellama-7b-python-hf"] = {
+            "model_name": "meta-llama/CodeLlama-7b-Python-hf",
+            "description": "CodeLlama 7B Python HF (no permission required)"
+        }
+        self.config["models"]["deepseek-r1"] = {
+            "model_name": "deepseek-ai/DeepSeek-R1",
+            "description": "DeepSeek R1 (no permission required)"
+        }
+        self.config["models"]["qwen2.5-7b-instruct"] = {
+            "model_name": "Qwen/Qwen2.5-7B-Instruct",
+            "description": "Qwen 2.5 7B Instruct (no permission required)"
+        }
+        self.config["models"]["deepseek-math-7b-instruct"] = {
+            "model_name": "deepseek-ai/deepseek-math-7b-instruct",
+            "description": "DeepSeek Math 7B Instruct (no permission required)"
+        }
+        self.config["models"]["deepseek-coder-v2-instruct"] = {
+            "model_name": "deepseek-ai/DeepSeek-Coder-V2-Instruct",
+            "description": "DeepSeek Coder V2 Instruct (no permission required)"
+        }
+        self.config["models"]["chronos-hermes-13b-gptq"] = {
+            "model_name": "TheBloke/Chronos-Hermes-13B-GPTQ",
+            "description": "Chronos Hermes 13B GPTQ (no permission required)"
+        }
+        self.config["models"]["undiplatypus2-13b-gptq"] = {
+            "model_name": "TheBloke/UndiPlatypus2-13B-GPTQ",
+            "description": "UndiPlatypus2 13B GPTQ (no permission required)"
+        }
+        self.config["models"]["openorca-platypus2-13b-gptq"] = {
+            "model_name": "TheBloke/OpenOrca-Platypus2-13B-GPTQ",
+            "description": "OpenOrca Platypus2 13B GPTQ (no permission required)"
+        }
+        self.config["models"]["undiopenhermes"] = {
+            "model_name": "Undi95/UndiOpenHermes-2.5-Mistral-7B",
+            "description": "UndiOpenHermes 2.5 Mistral 7B (NSFW)"
+        }
+        self.config["models"]["platypus2-13b-gptq"] = {
+            "model_name": "TheBloke/OpenOrca-Platypus2-13B-GPTQ",
+            "description": "OpenOrca Platypus2 13B GPTQ (NSFW)"
+        }
+        self.config["models"]["openhermes-2.5-mistral-7b-gptq"] = {
+            "model_name": "TheBloke/OpenHermes-2.5-Mistral-7B-GPTQ",
+            "description": "OpenHermes 2.5 Mistral 7B GPTQ (no permission required)"
+        }
+        self.config["models"]["openhermes-2.5-mistral-7b-gptq"] = {
+            "model_name": "TheBloke/OpenHermes-2.5-Mistral-7B-GPTQ",
+            "description": "OpenHermes 2.5 Mistral 7B GPTQ (NSFW)"
+        }
+        self.config["models"]["nous-hermes-2-mistral-7b-gptq"] = {
+            "model_name": "TheBloke/Nous-Hermes-2-Mistral-7B-GPTQ",
+            "description": "Nous Hermes 2 Mistral 7B GPTQ (NSFW)"
+        }
+        self.config["models"]["chronos-hermes-13b-gptq"] = {
+            "model_name": "TheBloke/Chronos-Hermes-13B-GPTQ",
+            "description": "Chronos Hermes 13B GPTQ (NSFW)"
+        }
+        self.config["models"]["undiplatypus2-13b-gptq"] = {
+            "model_name": "TheBloke/UndiPlatypus2-13B-GPTQ",
+            "description": "UndiPlatypus2 13B GPTQ (NSFW)"
+        }
+        # Add DeepSeek Coder model
+        self.config["models"]["deepseek-coder"] = {
+            "model_name": "deepseek-ai/deepseek-coder-6.7B-base",
+            "description": "DeepSeek Coder 6.7B base model"
+        }
+        # Example NSFW model (UndiOpenHermes)
+        self.config["models"]["nsfw-example"] = {
+            "model_name": "Undi95/UndiOpenHermes-2.5-Mistral-7B",
+            "description": "NSFW uncensored OpenHermes model"
+        }
+        self.config["models"]["openai"] = {
+            "model_name": "openai/gpt-3.5-turbo",
+            "max_length": 4096,
+            "quantization": "api",
+            "description": "OpenAI GPT-3.5 Turbo (API-based, cloud inference)"
+        }
         """Load model configurations"""
         default_config = {
             "models": {
-                "llama-3.1-8b": {
-                    "model_name": "meta-llama/Meta-Llama-3.1-8B-Instruct",
-                    "max_length": 8192,
-                    "quantization": "8bit",
-                    "description": "Llama 3.1 8B - Balanced performance and memory"
-                },
-                "llama-3.1-70b": {
-                    "model_name": "meta-llama/Meta-Llama-3.1-70B-Instruct", 
-                    "max_length": 8192,
-                    "quantization": "4bit",
-                    "description": "Llama 3.1 70B - High performance (requires >20GB GPU)"
-                },
                 "qwen-2.5-7b": {
                     "model_name": "Qwen/Qwen2.5-7B-Instruct",
                     "max_length": 32768,
@@ -90,12 +165,35 @@ class PyTorchModelManager:
         }
         
         try:
+            import os
+            # Load config from file if present
             if os.path.exists(self.config_path):
                 with open(self.config_path, 'r') as f:
                     self.config = json.load(f)
             else:
                 self.config = default_config
                 self.save_config()
+            # Dynamically add models from .env
+            if self.repo_regular:
+                self.config["models"]["regular"] = {
+                    "model_name": self.repo_regular,
+                    "description": "Regular PyTorch models from .env"
+                }
+            if self.repo_nsfw:
+                self.config["models"]["nsfw"] = {
+                    "model_name": self.repo_nsfw,
+                    "description": "NSFW PyTorch models from .env"
+                }
+            if self.repo_gguf_regular:
+                self.config["models"]["gguf_regular"] = {
+                    "model_name": self.repo_gguf_regular,
+                    "description": "Regular GGUF models from .env"
+                }
+            if self.repo_gguf_nsfw:
+                self.config["models"]["gguf_nsfw"] = {
+                    "model_name": self.repo_gguf_nsfw,
+                    "description": "NSFW GGUF models from .env"
+                }
         except Exception as e:
             logger.error(f"Error loading config: {e}")
             self.config = default_config
@@ -146,39 +244,54 @@ class PyTorchModelManager:
         
         model_config = self.config["models"][model_id]
         model_name = model_config["model_name"]
-        
+
+        # Special handling for OpenAI API-based model
+        if model_id == "openai":
+            logger.info("Configuring OpenAI API-based model (no local loading)")
+            self.models[model_id] = {
+                "model": None,
+                "tokenizer": None,
+                "config": model_config,
+                "loaded": True,
+                "load_time": datetime.now().isoformat(),
+                "api": True
+            }
+            self.current_model = None
+            self.current_tokenizer = None
+            return True
+
         try:
             logger.info(f"Loading model: {model_name}")
-            
+
             # Load tokenizer
             tokenizer = AutoTokenizer.from_pretrained(model_name)
             if tokenizer.pad_token is None:
                 tokenizer.pad_token = tokenizer.eos_token
-            
+
             # Prepare quantization
             quantization_config = self.get_quantization_config(
                 model_config.get("quantization", "none")
             )
-            
+
             # Load model with optimizations
             model_kwargs = {
                 "torch_dtype": torch.float16,
                 "device_map": "auto" if self.device == "cuda" else None,
                 "trust_remote_code": True,
             }
-            
+
             if quantization_config:
                 model_kwargs["quantization_config"] = quantization_config
-            
+
             model = AutoModelForCausalLM.from_pretrained(
                 model_name,
                 **model_kwargs
             )
-            
+
             # Move to device if not using device_map
             if self.device != "cuda":
                 model = model.to(self.device)
-            
+
             # Store loaded model
             self.models[model_id] = {
                 "model": model,
@@ -187,13 +300,13 @@ class PyTorchModelManager:
                 "loaded": True,
                 "load_time": datetime.now().isoformat()
             }
-            
+
             self.current_model = model
             self.current_tokenizer = tokenizer
-            
+
             logger.info(f"Successfully loaded {model_id}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Error loading model {model_id}: {e}")
             return False
@@ -359,17 +472,29 @@ class PyTorchModelManager:
     
     def list_available_models(self) -> List[Dict]:
         """List all available models from config"""
-        return [
-            {
-                "id": model_id,
-                "name": config["model_name"],
-                "description": config.get("description", ""),
-                "max_length": config.get("max_length", 2048),
-                "quantization": config.get("quantization", "none"),
-                "loaded": model_id in self.models and self.models[model_id].get("loaded", False)
-            }
-            for model_id, config in self.config["models"].items()
-        ]
+        models_list = []
+        for model_id, config in self.config["models"].items():
+            is_loaded = model_id in self.models and self.models[model_id].get("loaded", False)
+            # For OpenAI API model, treat as available even if not loaded as PyTorch
+            if model_id == "openai":
+                models_list.append({
+                    "id": model_id,
+                    "name": config["model_name"],
+                    "description": config.get("description", ""),
+                    "max_length": config.get("max_length", 4096),
+                    "quantization": config.get("quantization", "api"),
+                    "loaded": is_loaded or True
+                })
+            else:
+                models_list.append({
+                    "id": model_id,
+                    "name": config["model_name"],
+                    "description": config.get("description", ""),
+                    "max_length": config.get("max_length", 2048),
+                    "quantization": config.get("quantization", "none"),
+                    "loaded": is_loaded
+                })
+        return models_list
 
 # Global instance
 pytorch_manager = PyTorchModelManager()

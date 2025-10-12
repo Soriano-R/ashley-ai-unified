@@ -39,13 +39,13 @@ class EnhancedChatEngine:
     def _load_default_model(self):
         """Load default PyTorch model"""
         try:
-            available_models = self.pytorch_manager.list_available_models()
-            if available_models:
-                default_model = available_models[0]['id']
+            # Get default model from config
+            default_model = self.pytorch_manager.config.get("default_model", None)
+            if default_model:
                 logger.info(f"Loading default model: {default_model}")
                 self.pytorch_manager.load_model(default_model)
             else:
-                logger.warning("No PyTorch models configured")
+                logger.warning("No default model configured")
         except Exception as e:
             logger.error(f"Error loading default model: {e}")
     
@@ -188,7 +188,7 @@ Be helpful, engaging, and maintain the personality characteristics of {persona_n
                 self.context_history
             )
             
-            # Generate response using PyTorch model
+            # Generate response using PyTorch or OpenAI API model
             if self.pytorch_manager.current_model:
                 try:
                     response_text = self.pytorch_manager.generate_response(
@@ -197,18 +197,35 @@ Be helpful, engaging, and maintain the personality characteristics of {persona_n
                     )
                     response_data['response'] = response_text
                     response_data['model_used'] = 'pytorch'
-                    
                 except Exception as e:
                     logger.error(f"PyTorch generation failed: {e}")
-                    # Fallback to simple response
                     response_data['response'] = self._generate_fallback_response(message, persona_name)
                     response_data['model_used'] = 'fallback'
                     response_data['error'] = f"PyTorch error: {str(e)}"
+            elif self.pytorch_manager.models.get('openai', {}).get('loaded', False):
+                # Use OpenAI API for response
+                try:
+                    import openai
+                    openai.api_key = os.getenv('OPENAI_API_KEY')
+                    completion = openai.ChatCompletion.create(
+                        model=self.pytorch_manager.models['openai']['config']['model_name'],
+                        messages=[{"role": "user", "content": enhanced_prompt}],
+                        max_tokens=generation_kwargs.get('max_new_tokens', 1024),
+                        temperature=generation_kwargs.get('temperature', 0.7),
+                        top_p=generation_kwargs.get('top_p', 0.9)
+                    )
+                    response_text = completion.choices[0].message['content']
+                    response_data['response'] = response_text
+                    response_data['model_used'] = 'openai'
+                except Exception as e:
+                    logger.error(f"OpenAI API generation failed: {e}")
+                    response_data['response'] = self._generate_fallback_response(message, persona_name)
+                    response_data['model_used'] = 'fallback'
+                    response_data['error'] = f"OpenAI API error: {str(e)}"
             else:
-                # No PyTorch model available
                 response_data['response'] = self._generate_fallback_response(message, persona_name)
                 response_data['model_used'] = 'fallback'
-                response_data['error'] = "No PyTorch model loaded"
+                response_data['error'] = "No model loaded"
             
             # Update context history
             self._update_context_history(message, response_data['response'])

@@ -1,3 +1,84 @@
+
+# Ashley AI Unified – Copilot Agent Instructions
+
+## Overview
+Ashley AI Unified is a full-stack Next.js app with an integrated Python FastAPI microservice. The architecture merges React frontend and Python AI backend in a single deployable project, using the existing `chatbot_env` virtual environment. All code, tests, and scripts are unified for seamless development and deployment.
+
+## Architecture & Key Patterns
+- **Frontend:** Next.js 15+ (TypeScript, Tailwind CSS, App Router)
+- **Backend:** Python FastAPI microservice (internal port 8001)
+- **API Integration:** Next.js API routes (`src/app/api/*`) act as proxies to Python service
+- **Session/Auth:** Managed in Next.js, validated in Python
+- **Streaming:** Chat uses Server-Sent Events via API proxy
+- **Personas:** AI personalities defined in `python-service/personas/`
+- **PyTorch Models:** Managed via Python endpoints (`/api/models/pytorch/*`)
+- **Internet Search:** Python endpoints support multi-source search with optional API keys
+- **Testing:** Use `./test-setup.sh` (integration), `python-service/test_enhanced.py` (backend)
+
+
+## Developer Workflow
+- **Setup:**
+	- Always activate the existing virtualenv: `source ../chatbot_env/bin/activate`
+	- Use `./setup-dev.sh` for unified install (Node + Python)
+- **Start Dev Servers:**
+	- `npm run dev` (runs both Next.js and Python service)
+	- `npm run dev:next` (Next.js only)
+	- `npm run dev:python` (Python only)
+- **Build/Deploy:**
+	- `npm run build` → `npm start` (production)
+	- Docker: see `docker-compose.yml`
+- **Testing:**
+	- `./test-setup.sh` (end-to-end)
+	- `python python-service/test_enhanced.py` (backend)
+	- `./comprehensive-test.sh` (full stack)
+
+
+## Project Conventions
+- **Frontend:**
+	- Components in `src/components/`
+	- API routes in `src/app/api/` (proxy pattern)
+	- Types in `src/types/`, utilities in `src/lib/`
+- **Backend:**
+	- Core AI logic in `python-service/app/`
+	- Tools in `python-service/tools/`
+	- Data/storage in `python-service/storage/`
+	- Endpoints in `python-service/main.py`
+- **Integration:**
+	- All communication is internal (no CORS)
+	- API endpoints: `/api/python/*` (Next.js proxy) → Python microservice
+	- Health check: `/api/python/health`
+	- Chat: `/api/python/chat/stream`
+	- Model management: `/api/python/models/pytorch/*`
+	- Internet search: `/api/python/internet/*`
+
+
+## External Dependencies & Config
+- **Virtualenv:** Always use `../chatbot_env/` (never create new)
+- **API Keys:** For enhanced search, set `GOOGLE_API_KEY`, `BING_API_KEY` as env vars
+- **Redis:** Optional for caching (`REDIS_URL`)
+- **OpenAI:** API key required for GPT features
+
+
+## Example: Adding a New AI Tool
+1. Add Python logic to `python-service/tools/`
+2. Expose endpoint in `python-service/main.py`
+3. Proxy via Next.js API route in `src/app/api/`
+4. Update frontend to call new API route
+
+
+## Troubleshooting & Testing
+- Use `./test-setup.sh` for environment checks
+- Backend: run `python python-service/test_enhanced.py`
+- For integration issues, check API proxy logic in `src/app/api/`
+- See `docs/TUTORIAL_05_TESTING_TROUBLESHOOTING.md` for common issues
+
+
+## References
+- See `README.md` (root, python-service/, docs/) for architecture, setup, and workflow details
+- See `docs/` for step-by-step tutorials and advanced features
+
+---
+**Feedback:** If any section is unclear or missing, please specify so it can be improved for future AI agents.
 # Ashley AI Unified - Copilot Instructions
 
 ## Project Overview

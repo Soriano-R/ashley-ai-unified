@@ -109,7 +109,6 @@ Complete testing strategies and common issue resolution. This part covers:
 
 Deploy Ashley AI to Hugging Face Spaces with Pro features. This part covers:
 - Hugging Face Spaces setup
-- Gradio interface implementation
 - Pro account features and scaling
 - Custom domains and monitoring
 

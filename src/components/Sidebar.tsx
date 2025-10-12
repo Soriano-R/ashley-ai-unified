@@ -18,6 +18,7 @@ export default function Sidebar({
   onSignOut,
   onOpenSettings,
   onOpenAdminPanel,
+  onOpenUserManager,
   user
 }: SidebarProps) {
   const [showUserMenu, setShowUserMenu] = useState(false)
@@ -129,16 +130,10 @@ export default function Sidebar({
             <div className="mb-4 p-3 bg-red-900/20 border border-red-700 rounded-lg">
               <h3 className="text-xs font-semibold text-red-400 mb-2 uppercase">Admin Tools</h3>
               <div className="space-y-1">
-                {onOpenAdminPanel && (
-                  <button 
-                    onClick={onOpenAdminPanel}
-                    className="w-full flex items-center gap-2 px-2 py-1 text-sm text-red-300 hover:text-red-200 hover:bg-red-800/30 rounded transition-colors"
-                  >
-                    <CogIcon className="w-3 h-3" />
-                    Admin Panel
-                  </button>
-                )}
-                <button className="w-full flex items-center gap-2 px-2 py-1 text-sm text-red-300 hover:text-red-200 hover:bg-red-800/30 rounded transition-colors">
+                <button 
+                  onClick={typeof onOpenUserManager === 'function' ? onOpenUserManager : () => alert('User Management not implemented')}
+                  className="w-full flex items-center gap-2 px-2 py-1 text-sm text-red-300 hover:text-red-200 hover:bg-red-800/30 rounded transition-colors"
+                >
                   <UsersIcon className="w-3 h-3" />
                   User Management
                 </button>
