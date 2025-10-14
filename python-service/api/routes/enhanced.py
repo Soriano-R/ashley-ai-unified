@@ -12,7 +12,11 @@ from typing import Any, Dict, List, Optional, Tuple, Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, root_validator
 
-from app.persona_registry import MODEL_CATEGORIES, PERSONA_CATEGORIES, persona_payload
+from app.persona_registry import (
+    MODEL_CATEGORIES,
+    get_persona_categories,
+    persona_payload,
+)
 from core.enhanced_chat_engine import get_enhanced_chat_engine
 from core.pytorch_manager import get_pytorch_manager
 from tools.internet_access import get_internet_manager
@@ -324,7 +328,7 @@ async def proxy_personas():
         return PersonaCatalogResponse(
             personas=personas,
             models=models,
-            persona_categories=PERSONA_CATEGORIES,
+            persona_categories=get_persona_categories(),
             model_categories=MODEL_CATEGORIES,
         )
     except Exception:

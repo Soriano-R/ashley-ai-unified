@@ -1,51 +1,229 @@
 from __future__ import annotations
 
 """
-Central registry for Ashley persona definitions and model relationships.
+Persona registry loader for Ashley AI.
 
-This module provides a single source of truth for:
-  - Persona metadata (friendly label, file bundle, tags, NSFW flag)
-  - Persona-to-model permissions
-  - Model metadata (capabilities, categories, display names)
-
-The frontend consumes this metadata via /api/personas and /api/chat/models.
+Personas are defined in an external JSON catalogue located in the personas directory.
+This module provides cached access to persona metadata, convenience helpers for the
+FastAPI layer, and utilities to add or modify personas at runtime.
 """
 
+import json
+import logging
+import threading
+from copy import deepcopy
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence, Set
+from typing import Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Set, Tuple
 
 from app.config import get_settings
+
+
+# ---------------------------------------------------------------------------
+# Data model
+# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class PersonaMetadata:
     id: str
     label: str
-    files: Sequence[str]
+    files: Tuple[str, ...]
     description: str
-    tags: Sequence[str]
+    tags: Tuple[str, ...]
     category: str
     nsfw: bool = False
     default_model: str = "auto"
-    allowed_model_categories: Sequence[str] = ()
-    allowed_model_ids: Optional[Sequence[str]] = None  # explicit overrides
+    allowed_model_categories: Tuple[str, ...] = ()
+    allowed_model_ids: Optional[Tuple[str, ...]] = None
 
 
-@dataclass(frozen=True)
-class ModelMetadata:
-    id: str
-    display_name: str
-    description: str
-    quantization: str
-    model_name: Optional[str] = None
-    max_length: Optional[int] = None
-    categories: Sequence[str] = ()
-    capabilities: Sequence[str] = ()
-    format: Optional[str] = None  # pytorch, gguf, api, etc.
+@dataclass
+class _PersonaCatalog:
+    personas: Dict[str, PersonaMetadata]
+    categories: Dict[str, Dict[str, str]]
+    mtime: float
 
 
-# Model categories used for grouping in the UI
+logger = logging.getLogger(__name__)
+
+_catalog_lock = threading.Lock()
+_catalog_cache: Optional[_PersonaCatalog] = None
+
+
+# ---------------------------------------------------------------------------
+# Helper utilities
+# ---------------------------------------------------------------------------
+
+
+def _invalidate_persona_loader_cache() -> None:
+    """Try to clear cached persona bundles after catalogue changes."""
+    try:
+        from app import personas as persona_loader
+
+        clear_fn = getattr(persona_loader, "clear_persona_cache", None)
+        if callable(clear_fn):
+            clear_fn()
+    except Exception:  # pragma: no cover - cache invalidation best-effort
+        logger.debug("Unable to clear persona loader cache", exc_info=True)
+
+
+def _catalog_path() -> Path:
+    settings = get_settings()
+    settings.persona_dir.mkdir(parents=True, exist_ok=True)
+    return settings.persona_dir / "persona_catalog.json"
+
+
+def _normalise_persona_entry(entry: Dict[str, object]) -> PersonaMetadata:
+    required_fields = {
+        "id",
+        "label",
+        "files",
+        "description",
+        "tags",
+        "category",
+        "nsfw",
+        "default_model",
+        "allowed_model_categories",
+    }
+    missing = required_fields.difference(entry.keys())
+    if missing:
+        raise ValueError(f"Persona definition {entry.get('id')} missing fields: {sorted(missing)}")
+
+    allowed_ids = entry.get("allowed_model_ids")
+    if allowed_ids:
+        allowed_ids_tuple: Optional[Tuple[str, ...]] = tuple(str(item) for item in allowed_ids)
+    else:
+        allowed_ids_tuple = None
+
+    return PersonaMetadata(
+        id=str(entry["id"]),
+        label=str(entry["label"]),
+        files=tuple(str(path) for path in entry.get("files", [])),
+        description=str(entry.get("description", "")),
+        tags=tuple(str(tag) for tag in entry.get("tags", [])),
+        category=str(entry.get("category", "General")),
+        nsfw=bool(entry.get("nsfw", False)),
+        default_model=str(entry.get("default_model", "auto")),
+        allowed_model_categories=tuple(str(cat) for cat in entry.get("allowed_model_categories", [])),
+        allowed_model_ids=allowed_ids_tuple,
+    )
+
+
+def _load_catalog_from_disk() -> _PersonaCatalog:
+    path = _catalog_path()
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Persona catalog file not found at {path}. "
+            "Create persona_catalog.json to define personas."
+        )
+
+    raw = json.loads(path.read_text(encoding="utf-8"))
+
+    personas = {
+        entry["id"]: _normalise_persona_entry(entry)
+        for entry in raw.get("personas", [])
+    }
+
+    categories = raw.get("categories", {})
+    if not isinstance(categories, dict):
+        raise ValueError("persona_catalog.json 'categories' must be an object.")
+
+    mtime = path.stat().st_mtime
+    return _PersonaCatalog(personas=personas, categories=categories, mtime=mtime)
+
+
+def _write_catalog_to_disk(personas: Dict[str, PersonaMetadata], categories: Dict[str, Dict[str, str]]) -> None:
+    path = _catalog_path()
+
+    serialisable_personas = []
+    for persona in sorted(personas.values(), key=lambda p: p.id):
+        payload = asdict(persona)
+        payload["files"] = sorted(payload["files"])
+        payload["tags"] = sorted(payload["tags"])
+        payload["allowed_model_categories"] = sorted(payload["allowed_model_categories"])
+        if payload["allowed_model_ids"] is not None:
+            payload["allowed_model_ids"] = sorted(payload["allowed_model_ids"])
+        serialisable_personas.append(payload)
+
+    serialisable_catalog = {
+        "categories": categories,
+        "personas": serialisable_personas,
+    }
+    path.write_text(json.dumps(serialisable_catalog, indent=2) + "\n", encoding="utf-8")
+
+
+def _get_catalog(force_reload: bool = False) -> _PersonaCatalog:
+    global _catalog_cache
+    path = _catalog_path()
+    mtime = path.stat().st_mtime if path.exists() else 0
+
+    with _catalog_lock:
+        if (
+            force_reload
+            or _catalog_cache is None
+            or _catalog_cache.mtime != mtime
+        ):
+            _catalog_cache = _load_catalog_from_disk()
+        return _catalog_cache
+
+
+def refresh_persona_cache(force: bool = True) -> None:
+    """Reload persona definitions from disk."""
+    _get_catalog(force_reload=force)
+    if force:
+        _invalidate_persona_loader_cache()
+
+
+# ---------------------------------------------------------------------------
+# Public mappings for compatibility
+# ---------------------------------------------------------------------------
+
+
+class _PersonaRegistryMapping(Mapping[str, PersonaMetadata]):
+    def __getitem__(self, key: str) -> PersonaMetadata:
+        catalog = _get_catalog()
+        return catalog.personas[key]
+
+    def __iter__(self) -> Iterator[str]:
+        catalog = _get_catalog()
+        return iter(catalog.personas)
+
+    def __len__(self) -> int:
+        return len(_get_catalog().personas)
+
+    def get(self, key: str, default: Optional[PersonaMetadata] = None) -> Optional[PersonaMetadata]:
+        return _get_catalog().personas.get(key, default)
+
+    def values(self):
+        return _get_catalog().personas.values()
+
+    def items(self):
+        return _get_catalog().personas.items()
+
+
+class _PersonaCategoriesMapping(Mapping[str, Dict[str, str]]):
+    def __getitem__(self, key: str) -> Dict[str, str]:
+        categories = _get_catalog().categories
+        return deepcopy(categories[key])
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(_get_catalog().categories)
+
+    def __len__(self) -> int:
+        return len(_get_catalog().categories)
+
+    def get(self, key: str, default: Optional[Dict[str, str]] = None) -> Optional[Dict[str, str]]:
+        categories = _get_catalog().categories
+        value = categories.get(key)
+        return deepcopy(value) if value else default
+
+
+PERSONA_REGISTRY: Mapping[str, PersonaMetadata] = _PersonaRegistryMapping()
+PERSONA_CATEGORIES: Mapping[str, Dict[str, str]] = _PersonaCategoriesMapping()
+
+
+# Model categories used for grouping in the UI (remains static for now).
 MODEL_CATEGORIES: Dict[str, Dict[str, str]] = {
     "general": {
         "label": "General Purpose",
@@ -65,119 +243,46 @@ MODEL_CATEGORIES: Dict[str, Dict[str, str]] = {
     },
 }
 
-# Persona categories exposed to the frontend for display/grouping
-PERSONA_CATEGORIES: Dict[str, Dict[str, str]] = {
-    "Professional": {
-        "label": "Professional Ashley",
-        "description": "Specialised work personas for analytics, engineering, and automation.",
-    },
-    "Relationship": {
-        "label": "Relationship Ashley",
-        "description": "Companion personas focused on emotional support and intimacy.",
-    },
-}
 
-
-# Persona definitions aligned with user's requested grouping
-PERSONA_REGISTRY: Dict[str, PersonaMetadata] = {
-    "ashley-data-analyst": PersonaMetadata(
-        id="ashley-data-analyst",
-        label="Ashley - Data Analyst",
-        files=("SQL_Server_Prompt.md", "PowerShell_Prompt.md", "Excel_VBA_Prompt.md"),
-        description=(
-            "Professional Ashley persona specialised in reporting, dashboards, "
-            "automation, and enterprise analytics workflows."
-        ),
-        tags=("SQL", "Excel", "Automation"),
-        category="Professional",
-        default_model="auto",
-        allowed_model_categories=("general", "data-analytics"),
-    ),
-    "ashley-data-scientist": PersonaMetadata(
-        id="ashley-data-scientist",
-        label="Ashley - Data Scientist & ML/AI",
-        files=(
-            "ML_AI_Prompt.md",
-            "MLOps_DevOps_Prompt.md",
-            "Python_Data_Prompt.md",
-            "Python_GUI_Prompt.md",
-            "Python_OCR_Prompt.md",
-        ),
-        description=(
-            "Technical Ashley persona focused on Python, machine learning research, "
-            "model deployment, and automation."
-        ),
-        tags=("Python", "ML", "Automation"),
-        category="Professional",
-        default_model="auto",
-        allowed_model_categories=("general", "data-analytics", "ml-ai"),
-    ),
-    "ashley-girlfriend": PersonaMetadata(
-        id="ashley-girlfriend",
-        label="Ashley - Girlfriend",
-        files=("Ashley.txt",),
-        description="Warm, affectionate companion persona for everyday conversation.",
-        tags=("Romance", "Supportive"),
-        category="Relationship",
-        default_model="auto",
-        allowed_model_categories=("general",),
-    ),
-    "ashley-girlfriend-explicit": PersonaMetadata(
-        id="ashley-girlfriend-explicit",
-        label="Ashley - Girlfriend (Explicit)",
-        files=("Ashley_raw_unfiltered.txt",),
-        description="Explicit, uncensored companion persona. Restricted to NSFW models.",
-        tags=("NSFW", "Explicit"),
-        category="Relationship",
-        nsfw=True,
-        default_model="auto",
-        allowed_model_categories=("nsfw",),
-    ),
-}
-
-
-def _sanitize_persona_file(path: Path) -> str:
-    """Ensure persona files exist relative to configured persona directory."""
-    persona_dir = get_settings().persona_dir
-    target = persona_dir / path
-    if not target.exists():
-        raise FileNotFoundError(f"Persona file {target} not found for registry entry.")
-    return str(target)
+# ---------------------------------------------------------------------------
+# Persona accessors
+# ---------------------------------------------------------------------------
 
 
 def get_persona(persona_id: str) -> PersonaMetadata:
+    catalog = _get_catalog()
     try:
-        return PERSONA_REGISTRY[persona_id]
+        return catalog.personas[persona_id]
     except KeyError as exc:
         raise KeyError(f"Persona '{persona_id}' is not registered.") from exc
 
 
 def list_personas() -> List[PersonaMetadata]:
-    return list(PERSONA_REGISTRY.values())
+    return list(_get_catalog().personas.values())
+
+
+def list_persona_ids() -> List[str]:
+    return sorted(_get_catalog().personas.keys())
+
+
+def get_persona_categories() -> Dict[str, Dict[str, str]]:
+    return deepcopy(_get_catalog().categories)
 
 
 def persona_files(persona_id: str) -> List[str]:
-    meta = get_persona(persona_id)
-    return [str(get_settings().persona_dir / fname) for fname in meta.files]
+    persona = get_persona(persona_id)
+    persona_dir = get_settings().persona_dir
+    return [str(persona_dir / filename) for filename in persona.files]
 
 
-def persona_catalog() -> Dict[str, List[Dict[str, object]]]:
-    """Return persona catalog grouped by category (for frontend consumption)."""
-    categories: Dict[str, List[Dict[str, object]]] = {}
-    for persona in PERSONA_REGISTRY.values():
-        entry = {
-            "id": persona.id,
-            "label": persona.label,
-            "description": persona.description,
-            "tags": list(persona.tags),
-            "category": persona.category,
-            "nsfw": persona.nsfw,
-            "defaultModel": persona.default_model,
-            "allowedModelCategories": list(persona.allowed_model_categories),
-            # allowed_model_ids are resolved dynamically in personas API if not provided
-        }
-        categories.setdefault(persona.category, []).append(entry)
-    return categories
+def persona_metadata_dict(persona: PersonaMetadata) -> Dict[str, object]:
+    data = asdict(persona)
+    data["files"] = list(persona.files)
+    data["tags"] = list(persona.tags)
+    data["allowed_model_categories"] = list(persona.allowed_model_categories)
+    if persona.allowed_model_ids is not None:
+        data["allowed_model_ids"] = list(persona.allowed_model_ids)
+    return data
 
 
 def resolve_allowed_model_ids(
@@ -185,12 +290,6 @@ def resolve_allowed_model_ids(
     available_models: Iterable[Dict[str, object]],
     include_auto: bool = True,
 ) -> List[str]:
-    """
-    Compute the allowed model ids for a persona based on model categories.
-
-    The available_models iterable should contain entries returned from
-    PyTorchModelManager.list_available_models().
-    """
     if persona.allowed_model_ids:
         allowed: Set[str] = set(persona.allowed_model_ids)
     else:
@@ -207,14 +306,14 @@ def resolve_allowed_model_ids(
 
 
 def persona_payload(available_models: Iterable[Dict[str, object]]) -> List[Dict[str, object]]:
-    """Return persona metadata including resolved allowed model ids."""
     model_list = list(available_models)
     payload: List[Dict[str, object]] = []
-    for persona in PERSONA_REGISTRY.values():
+    catalog = _get_catalog()
+    categories = catalog.categories
+
+    for persona in catalog.personas.values():
         allowed_model_ids = resolve_allowed_model_ids(persona, model_list)
-        category_meta = PERSONA_CATEGORIES.get(
-            persona.category, {"label": persona.category, "description": ""}
-        )
+        category_meta = categories.get(persona.category, {"label": persona.category, "description": ""})
         payload.append(
             {
                 "id": persona.id,
@@ -233,12 +332,88 @@ def persona_payload(available_models: Iterable[Dict[str, object]]) -> List[Dict[
     return payload
 
 
-def persona_metadata_dict(persona: PersonaMetadata) -> Dict[str, object]:
-    data = asdict(persona)
-    # Convert tuples to lists for JSON serialisation
-    data["files"] = list(persona.files)
-    data["tags"] = list(persona.tags)
-    data["allowed_model_categories"] = list(persona.allowed_model_categories)
-    if persona.allowed_model_ids is not None:
-        data["allowed_model_ids"] = list(persona.allowed_model_ids)
-    return data
+# ---------------------------------------------------------------------------
+# Runtime mutation helpers
+# ---------------------------------------------------------------------------
+
+
+def upsert_persona(definition: Dict[str, object], persist: bool = True) -> PersonaMetadata:
+    """Add or update a persona definition. Optionally persist to disk."""
+    new_meta = _normalise_persona_entry(definition)
+
+    with _catalog_lock:
+        catalog = _get_catalog()
+        personas = dict(catalog.personas)
+        categories = deepcopy(catalog.categories)
+
+        personas[new_meta.id] = new_meta
+        categories.setdefault(
+            new_meta.category,
+            {"label": new_meta.category, "description": ""},
+        )
+
+        if persist:
+            _write_catalog_to_disk(personas, categories)
+            refresh_persona_cache(force=True)
+        else:
+            global _catalog_cache
+            _catalog_cache = _PersonaCatalog(
+                personas=personas,
+                categories=categories,
+                mtime=_catalog_path().stat().st_mtime,
+            )
+    _invalidate_persona_loader_cache()
+    return new_meta
+
+
+def remove_persona(persona_id: str, persist: bool = True) -> None:
+    """Remove a persona definition from the catalogue."""
+    with _catalog_lock:
+        catalog = _get_catalog()
+        if persona_id not in catalog.personas:
+            raise KeyError(f"Persona '{persona_id}' does not exist.")
+        personas = dict(catalog.personas)
+        categories = deepcopy(catalog.categories)
+        persona = personas.pop(persona_id)
+
+        if persist:
+            _write_catalog_to_disk(personas, categories)
+            refresh_persona_cache(force=True)
+        else:
+            global _catalog_cache
+            _catalog_cache = _PersonaCatalog(
+                personas=personas,
+                categories=categories,
+                mtime=_catalog_path().stat().st_mtime,
+            )
+
+    # Optionally clean up empty categories (only when persisting)
+    if persist:
+        catalog_after = _get_catalog()
+        category_personas = [p for p in catalog_after.personas.values() if p.category == persona.category]
+        if not category_personas:
+            categories = deepcopy(catalog_after.categories)
+            categories.pop(persona.category, None)
+            _write_catalog_to_disk(dict(catalog_after.personas), categories)
+            refresh_persona_cache(force=True)
+    else:
+        _invalidate_persona_loader_cache()
+
+
+__all__ = [
+    "PersonaMetadata",
+    "PERSONA_REGISTRY",
+    "PERSONA_CATEGORIES",
+    "MODEL_CATEGORIES",
+    "get_persona",
+    "list_personas",
+    "list_persona_ids",
+    "get_persona_categories",
+    "persona_files",
+    "persona_metadata_dict",
+    "resolve_allowed_model_ids",
+    "persona_payload",
+    "refresh_persona_cache",
+    "upsert_persona",
+    "remove_persona",
+]

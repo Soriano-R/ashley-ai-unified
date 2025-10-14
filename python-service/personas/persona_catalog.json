@@ -1,0 +1,101 @@
+{
+  "categories": {
+    "Professional": {
+      "label": "Professional Ashley",
+      "description": "Specialised work personas for analytics, engineering, and automation."
+    },
+    "Relationship": {
+      "label": "Relationship Ashley",
+      "description": "Companion personas focused on emotional support and intimacy."
+    }
+  },
+  "personas": [
+    {
+      "id": "ashley-data-analyst",
+      "label": "Ashley - Data Analyst",
+      "files": [
+        "Excel_VBA_Prompt.md",
+        "PowerShell_Prompt.md",
+        "SQL_Server_Prompt.md"
+      ],
+      "description": "Professional Ashley persona specialised in reporting, dashboards, automation, and enterprise analytics workflows.",
+      "tags": [
+        "Automation",
+        "Excel",
+        "SQL"
+      ],
+      "category": "Professional",
+      "nsfw": false,
+      "default_model": "auto",
+      "allowed_model_categories": [
+        "general",
+        "data-analytics"
+      ],
+      "allowed_model_ids": null
+    },
+    {
+      "id": "ashley-data-scientist",
+      "label": "Ashley - Data Scientist & ML/AI",
+      "files": [
+        "MLOps_DevOps_Prompt.md",
+        "ML_AI_Prompt.md",
+        "Python_Data_Prompt.md",
+        "Python_GUI_Prompt.md",
+        "Python_OCR_Prompt.md"
+      ],
+      "description": "Technical Ashley persona focused on Python, machine learning research, model deployment, and automation.",
+      "tags": [
+        "Automation",
+        "ML",
+        "Python"
+      ],
+      "category": "Professional",
+      "nsfw": false,
+      "default_model": "auto",
+      "allowed_model_categories": [
+        "general",
+        "data-analytics",
+        "ml-ai"
+      ],
+      "allowed_model_ids": null
+    },
+    {
+      "id": "ashley-girlfriend",
+      "label": "Ashley - Girlfriend",
+      "files": [
+        "Ashley.txt"
+      ],
+      "description": "Warm, affectionate companion persona for everyday conversation.",
+      "tags": [
+        "Romance",
+        "Supportive"
+      ],
+      "category": "Relationship",
+      "nsfw": false,
+      "default_model": "auto",
+      "allowed_model_categories": [
+        "general"
+      ],
+      "allowed_model_ids": null
+    },
+    {
+      "id": "ashley-girlfriend-explicit",
+      "label": "Ashley - Girlfriend (Explicit)",
+      "files": [
+        "Ashley_raw_unfiltered.txt"
+      ],
+      "description": "Explicit, uncensored companion persona. Restricted to NSFW models.",
+      "tags": [
+        "Explicit",
+        "NSFW"
+      ],
+      "category": "Relationship",
+      "nsfw": true,
+      "default_model": "auto",
+      "allowed_model_categories": [
+        "nsfw"
+      ],
+      "allowed_model_ids": null
+    }
+  ]
+}
