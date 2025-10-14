@@ -2,12 +2,14 @@
 Enhanced API Routes for Ashley AI with PyTorch and Internet Access
 """
 
+import asyncio
 import logging
+from copy import deepcopy
+from datetime import datetime
 from uuid import uuid4
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Literal
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, root_validator
 
 from app.persona_registry import MODEL_CATEGORIES, PERSONA_CATEGORIES, persona_payload
@@ -35,6 +37,11 @@ class ChatMessagePayload(BaseModel):
         values["role"] = role
         values["content"] = str(content)
         return values
+
+
+class ChatMessage(BaseModel):
+    role: Literal["system", "user", "assistant"]
+    content: str
 
 
 class EnhancedChatRequest(BaseModel):
@@ -72,7 +79,7 @@ class EnhancedChatRequest(BaseModel):
 class EnhancedChatResponse(BaseModel):
     response: str
     message: str
-    messages: List[Dict[str, str]]
+    messages: List[ChatMessage]
     persona_used: str
     persona_label: Optional[str] = None
     internet_used: bool
@@ -81,6 +88,7 @@ class EnhancedChatResponse(BaseModel):
     sources: List[str] = Field(default_factory=list)
     generation_time: float
     error: Optional[str] = None
+    warning: Optional[str] = None
 
 
 class InternetSearchRequest(BaseModel):
@@ -94,6 +102,20 @@ class InternetSearchResponse(BaseModel):
     total_results: int
     sources_used: List[str]
     timestamp: str
+
+
+class ModelCatalogResponse(BaseModel):
+    models: List[Dict[str, Any]]
+    categories: Dict[str, Dict[str, str]]
+    model_categories: Dict[str, Dict[str, str]]
+
+
+class PersonaCatalogResponse(BaseModel):
+    personas: List[Dict[str, Any]]
+    models: List[Dict[str, Any]]
+    persona_categories: Dict[str, Dict[str, str]]
+    model_categories: Dict[str, Dict[str, str]]
+    warning: Optional[str] = None
 
 
 class ModelSwitchRequest(BaseModel):
@@ -116,11 +138,86 @@ class ModelListResponse(BaseModel):
     models: List[Dict[str, Any]]
 
 
+class MessageResponse(BaseModel):
+    message: str
+
+
+class ModelInfoResponse(BaseModel):
+    info: Dict[str, Any]
+
+
+class ImageGenerationResponse(BaseModel):
+    success: bool
+    image_url: str
+    prompt_used: str
+    persona_used: Optional[str] = None
+
+
+class CurrentPersonaResponse(BaseModel):
+    current_persona: str
+
+
+class InternetUsageResponse(BaseModel):
+    timestamp: str
+    services: Dict[str, Any]
+
+
+class HealthComponentStatus(BaseModel):
+    status: Literal["available", "unavailable", "degraded"]
+    detail: Optional[str] = None
+
+
+class HealthSummaryResponse(BaseModel):
+    status: Literal["healthy", "unhealthy"]
+    timestamp: str
+    components: Dict[str, HealthComponentStatus]
+
+
+class InternetTestResponse(BaseModel):
+    internet_accessible: bool
+    timestamp: str
+    test_results: Optional[int] = None
+    status: Optional[str] = None
+
+
+
 class FineTuningRequest(BaseModel):
     model_id: str = Field(..., description="Model to prepare for fine-tuning")
     lora_config: Optional[Dict[str, Any]] = Field(
         None, description="LoRA configuration"
     )
+
+
+def _http_error(status_code: int, code: str, message: str) -> HTTPException:
+    return HTTPException(status_code=status_code, detail={"code": code, "message": message})
+
+
+def _convert_history(history: List[Dict[str, str]]) -> List[ChatMessage]:
+    converted: List[ChatMessage] = []
+    for entry in history:
+        try:
+            converted.append(ChatMessage(role=entry["role"], content=entry["content"]))
+        except KeyError:
+            logger.warning("Skipping malformed history entry: %s", entry)
+    return converted
+
+
+def _limit_search_results(result: Dict[str, Any], max_total: Optional[int]) -> Dict[str, Any]:
+    if not max_total:
+        return result
+
+    trimmed = deepcopy(result)
+    remaining = max_total
+    for source, entries in trimmed.get("results", {}).items():
+        if remaining <= 0:
+            trimmed["results"][source] = []
+            continue
+        trimmed_entries = entries[:remaining]
+        trimmed["results"][source] = trimmed_entries
+        remaining -= len(trimmed_entries)
+
+    trimmed["total_results"] = sum(len(entries) for entries in trimmed.get("results", {}).values())
+    return trimmed
 
 
 def _resolve_history_and_message(
@@ -160,73 +257,87 @@ async def proxy_chat(request: EnhancedChatRequest):
         history, user_message = _resolve_history_and_message(request)
 
         chat_engine = get_enhanced_chat_engine()
-        result = chat_engine.generate_response(
-            message=user_message,
-            persona_name=request.persona,
-            history=history,
-            use_internet=request.use_internet,
-            model_id=request.model_id,
+        result = await asyncio.to_thread(
+            chat_engine.generate_response,
+            user_message,
+            request.persona,
+            request.use_internet,
+            request.model_id,
+            history,
             max_new_tokens=request.max_new_tokens,
             temperature=request.temperature,
             top_p=request.top_p,
         )
 
-        assistant_text = result.get("response") or ""
-        conversation = [*history, {"role": "assistant", "content": assistant_text}]
+        required_keys = {"response", "persona_used", "internet_used", "generation_time"}
+        if not required_keys.issubset(result):
+            logger.error("Chat engine returned incomplete payload: %s", result.keys())
+            raise _http_error(502, "CHAT_RESPONSE_INVALID", "Chat service returned an incomplete response.")
 
-        payload = {
-            **result,
-            "response": assistant_text,
-            "message": assistant_text,
-            "messages": conversation,
-            "allowed_models": result.get("allowed_models", []),
-        }
-        return JSONResponse(payload)
+        assistant_text = str(result.get("response") or "")
+        conversation = _convert_history(history)
+        conversation.append(ChatMessage(role="assistant", content=assistant_text))
+
+        payload = EnhancedChatResponse(
+            response=assistant_text,
+            message=assistant_text,
+            messages=conversation,
+            persona_used=str(result.get("persona_used")),
+            persona_label=result.get("persona_label"),
+            internet_used=bool(result.get("internet_used")),
+            model_used=result.get("model_used"),
+            allowed_models=list(result.get("allowed_models") or []),
+            sources=list(result.get("sources") or []),
+            generation_time=float(result.get("generation_time") or 0.0),
+            error=result.get("error"),
+            warning=result.get("warning"),
+        )
+        return payload
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Proxy chat error")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _http_error(500, "CHAT_REQUEST_FAILED", "Chat service failed to respond.")
 
 
-@router.get("/chat/models")
+@router.get("/chat/models", response_model=ModelCatalogResponse)
 async def proxy_chat_models():
     try:
         pytorch_manager = get_pytorch_manager()
-        models = pytorch_manager.list_available_models()
-        return {
-            "models": models,
-            "categories": MODEL_CATEGORIES,
-            "model_categories": MODEL_CATEGORIES,
-        }
-    except Exception as e:
-        logger.error(f"Proxy chat models error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        models = await asyncio.to_thread(pytorch_manager.list_available_models)
+        return ModelCatalogResponse(
+            models=models,
+            categories=MODEL_CATEGORIES,
+            model_categories=MODEL_CATEGORIES,
+        )
+    except Exception:
+        logger.exception("Proxy chat models error")
+        raise _http_error(500, "MODEL_CATALOG_FAILED", "Unable to retrieve model catalog.")
 
 
-@router.get("/personas")
+@router.get("/personas", response_model=PersonaCatalogResponse)
 async def proxy_personas():
     try:
         pytorch_manager = get_pytorch_manager()
-        models = pytorch_manager.list_available_models()
-        personas = persona_payload(models)
-        return {
-            "personas": personas,
-            "models": models,
-            "persona_categories": PERSONA_CATEGORIES,
-            "model_categories": MODEL_CATEGORIES,
-        }
-    except Exception as e:
-        logger.error(f"Proxy personas error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        models = await asyncio.to_thread(pytorch_manager.list_available_models)
+        personas = await asyncio.to_thread(persona_payload, models)
+        return PersonaCatalogResponse(
+            personas=personas,
+            models=models,
+            persona_categories=PERSONA_CATEGORIES,
+            model_categories=MODEL_CATEGORIES,
+        )
+    except Exception:
+        logger.exception("Proxy personas error")
+        raise _http_error(500, "PERSONA_CATALOG_FAILED", "Unable to retrieve personas.")
 
 
-@router.post("/image")
+@router.post("/image", response_model=ImageGenerationResponse)
 async def proxy_image(payload: Dict[str, Any]):
     try:
         prompt = (payload.get("prompt") or "").strip()
         if not prompt:
-            raise HTTPException(status_code=400, detail="Prompt is required")
+            raise _http_error(400, "IMAGE_PROMPT_REQUIRED", "Image prompt is required.")
 
         size = (payload.get("size") or "1024x1024").lower()
         width, height = {
@@ -236,27 +347,28 @@ async def proxy_image(payload: Dict[str, Any]):
 
         seed = uuid4().hex
         image_url = f"https://picsum.photos/seed/{seed}/{width}/{height}"
-        return {
-            "success": True,
-            "image_url": image_url,
-            "prompt_used": prompt,
-            "persona_used": payload.get("persona"),
-        }
+        return ImageGenerationResponse(
+            success=True,
+            image_url=image_url,
+            prompt_used=prompt,
+            persona_used=payload.get("persona"),
+        )
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Proxy image error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("Proxy image error")
+        raise _http_error(500, "IMAGE_GENERATION_FAILED", "Image service is currently unavailable.")
 
-@router.post("/internet")
-async def proxy_internet(payload: 'InternetSearchRequest'):
+@router.post("/internet", response_model=InternetSearchResponse)
+async def proxy_internet(payload: InternetSearchRequest):
     try:
         internet_manager = get_internet_manager()
-        results = internet_manager.comprehensive_search(payload.query)
-        return results
-    except Exception as e:
-        logger.error(f"Proxy internet error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        results = await asyncio.to_thread(internet_manager.comprehensive_search, payload.query)
+        trimmed = _limit_search_results(results, payload.max_results)
+        return InternetSearchResponse(**trimmed)
+    except Exception:
+        logger.exception("Proxy internet error")
+        raise _http_error(500, "INTERNET_SEARCH_FAILED", "Internet search service is unavailable.")
 
 # Request/Response Models
 # Enhanced Chat Endpoint
@@ -265,25 +377,7 @@ async def enhanced_chat(request: EnhancedChatRequest):
     """
     Enhanced chat with PyTorch models, internet access, and personas
     """
-    try:
-        chat_engine = get_enhanced_chat_engine()
-        
-        # Generate response with all enhancements
-        result = chat_engine.generate_response(
-            message=request.message,
-            persona_name=request.persona,
-            use_internet=request.use_internet,
-            model_id=request.model_id,
-            max_new_tokens=request.max_new_tokens,
-            temperature=request.temperature,
-            top_p=request.top_p
-        )
-        
-        return EnhancedChatResponse(**result)
-        
-    except Exception as e:
-        logger.error(f"Enhanced chat error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    return await proxy_chat(request)
 
 # Internet Search Endpoint
 @router.post("/internet/search", response_model=InternetSearchResponse)
@@ -293,28 +387,12 @@ async def internet_search(request: InternetSearchRequest):
     """
     try:
         internet_manager = get_internet_manager()
-        
-        # Update max_results in config temporarily
-        original_max = internet_manager.config.get("max_results", 5)
-        internet_manager.config["max_results"] = request.max_results
-        
-        # Perform search
-        results = internet_manager.comprehensive_search(request.query)
-        
-        # Restore original config
-        internet_manager.config["max_results"] = original_max
-        
-        return InternetSearchResponse(
-            query=results["query"],
-            results=results["results"],
-            total_results=results["total_results"],
-            sources_used=results["sources_used"],
-            timestamp=results["timestamp"]
-        )
-        
-    except Exception as e:
-        logger.error(f"Internet search error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        results = await asyncio.to_thread(internet_manager.comprehensive_search, request.query)
+        trimmed = _limit_search_results(results, request.max_results)
+        return InternetSearchResponse(**trimmed)
+    except Exception:
+        logger.exception("Internet search error")
+        raise _http_error(500, "INTERNET_SEARCH_FAILED", "Unable to complete internet search.")
 
 # Model Management Endpoints
 @router.get("/models/list", response_model=ModelListResponse)
@@ -324,33 +402,33 @@ async def list_models():
     """
     try:
         pytorch_manager = get_pytorch_manager()
-        models = pytorch_manager.list_available_models()
-        
+        models = await asyncio.to_thread(pytorch_manager.list_available_models)
         return ModelListResponse(models=models)
-        
-    except Exception as e:
-        logger.error(f"List models error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("List models error")
+        raise _http_error(500, "MODEL_LIST_FAILED", "Unable to list available models.")
 
-@router.post("/models/switch")
+@router.post("/models/switch", response_model=MessageResponse)
 async def switch_model(request: ModelSwitchRequest):
     """
     Switch to a different PyTorch model
     """
     try:
         chat_engine = get_enhanced_chat_engine()
-        success = chat_engine.switch_model(request.model_id)
-        
-        if success:
-            return {"message": f"Successfully switched to model {request.model_id}"}
-        else:
-            raise HTTPException(status_code=400, detail=f"Failed to switch to model {request.model_id}")
-            
-    except Exception as e:
-        logger.error(f"Model switch error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        success = await asyncio.to_thread(chat_engine.switch_model, request.model_id)
 
-@router.post("/models/prepare-training")
+        if success:
+            return MessageResponse(message=f"Successfully switched to model {request.model_id}")
+
+        raise _http_error(400, "MODEL_SWITCH_FAILED", f"Failed to switch to model {request.model_id}.")
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Model switch error")
+        raise _http_error(500, "MODEL_SWITCH_ERROR", "Unable to switch models at this time.")
+
+@router.post("/models/prepare-training", response_model=MessageResponse)
 async def prepare_model_for_training(request: FineTuningRequest):
     """
     Prepare a model for fine-tuning
@@ -359,55 +437,68 @@ async def prepare_model_for_training(request: FineTuningRequest):
         pytorch_manager = get_pytorch_manager()
         
         # Load model if not already loaded
-        if not pytorch_manager.load_model(request.model_id):
-            raise HTTPException(status_code=400, detail=f"Failed to load model {request.model_id}")
-        
-        # Prepare for fine-tuning
-        success = pytorch_manager.prepare_for_finetuning(
+        loaded = await asyncio.to_thread(pytorch_manager.load_model, request.model_id)
+        if not loaded:
+            raise _http_error(400, "MODEL_LOAD_FAILED", f"Failed to load model {request.model_id} for fine-tuning.")
+
+        success = await asyncio.to_thread(
+            pytorch_manager.prepare_for_finetuning,
             request.model_id,
-            lora_config=request.lora_config
+            lora_config=request.lora_config,
         )
-        
+
         if success:
-            return {"message": f"Model {request.model_id} prepared for fine-tuning"}
-        else:
-            raise HTTPException(status_code=400, detail=f"Failed to prepare model {request.model_id} for training")
-            
-    except Exception as e:
-        logger.error(f"Prepare training error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+            return MessageResponse(message=f"Model {request.model_id} prepared for fine-tuning.")
+
+        raise _http_error(
+            400,
+            "MODEL_PREPARE_FAILED",
+            f"Failed to prepare model {request.model_id} for fine-tuning.",
+        )
+
+    except HTTPException:
+        raise
+    except AttributeError:
+        logger.exception("Fine-tuning not implemented for current model manager")
+        raise _http_error(501, "LORA_NOT_IMPLEMENTED", "Fine-tuning is not supported in this deployment.")
+    except Exception:
+        logger.exception("Prepare training error")
+        raise _http_error(500, "MODEL_PREPARE_ERROR", "Unable to prepare model for fine-tuning.")
 
 # Persona Management
-@router.post("/persona/set")
+@router.post("/persona/set", response_model=MessageResponse)
 async def set_persona(request: PersonaSetRequest):
     """
     Set the current persona
     """
     try:
         chat_engine = get_enhanced_chat_engine()
-        success = chat_engine.set_persona(request.persona_name)
-        
-        if success:
-            return {"message": f"Persona set to {request.persona_name}"}
-        else:
-            raise HTTPException(status_code=400, detail=f"Failed to set persona to {request.persona_name}")
-            
-    except Exception as e:
-        logger.error(f"Set persona error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        success = await asyncio.to_thread(chat_engine.set_persona, request.persona_name)
 
-@router.get("/persona/current")
+        if success:
+            return MessageResponse(message=f"Persona set to {request.persona_name}")
+
+        raise _http_error(400, "PERSONA_SET_FAILED", f"Failed to set persona to {request.persona_name}.")
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Set persona error")
+        raise _http_error(500, "PERSONA_SET_ERROR", "Unable to update persona.")
+
+
+@router.get("/persona/current", response_model=CurrentPersonaResponse)
 async def get_current_persona():
     """
     Get the current persona
     """
     try:
         chat_engine = get_enhanced_chat_engine()
-        return {"current_persona": chat_engine.current_persona}
-        
-    except Exception as e:
-        logger.error(f"Get persona error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return CurrentPersonaResponse(current_persona=chat_engine.current_persona)
+
+    except Exception:
+        logger.exception("Get persona error")
+        raise _http_error(500, "PERSONA_FETCH_ERROR", "Unable to retrieve current persona.")
 
 # System Status and Management
 @router.get("/system/status", response_model=SystemStatusResponse)
@@ -421,76 +512,69 @@ async def get_system_status():
         
         return SystemStatusResponse(**status)
         
-    except Exception as e:
-        logger.error(f"System status error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("System status error")
+        raise _http_error(500, "SYSTEM_STATUS_ERROR", "Unable to retrieve system status.")
 
-@router.get("/internet/usage")
+@router.get("/internet/usage", response_model=InternetUsageResponse)
 async def get_internet_usage():
     """
     Get internet API usage statistics
     """
     try:
         internet_manager = get_internet_manager()
-        usage_report = internet_manager.get_usage_status()
-        
-        return usage_report
-        
-    except Exception as e:
-        logger.error(f"Internet usage error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        usage_report = await asyncio.to_thread(internet_manager.get_usage_status)
+        return InternetUsageResponse(**usage_report)
+    except Exception:
+        logger.exception("Internet usage error")
+        raise _http_error(500, "INTERNET_USAGE_ERROR", "Unable to retrieve internet usage status.")
 
-@router.post("/context/clear")
+@router.post("/context/clear", response_model=MessageResponse)
 async def clear_context():
     """
     Clear conversation context
     """
     try:
         chat_engine = get_enhanced_chat_engine()
-        chat_engine.clear_context()
-        
-        return {"message": "Context cleared successfully"}
-        
-    except Exception as e:
-        logger.error(f"Clear context error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        await asyncio.to_thread(chat_engine.clear_context)
+        return MessageResponse(message="Context cleared successfully.")
+    except Exception:
+        logger.exception("Clear context error")
+        raise _http_error(500, "CONTEXT_CLEAR_ERROR", "Unable to clear conversation context.")
 
 # Model Information and Memory Management
-@router.get("/models/info")
+@router.get("/models/info", response_model=ModelInfoResponse)
 async def get_model_info():
     """
     Get detailed model information and memory usage
     """
     try:
         pytorch_manager = get_pytorch_manager()
-        info = pytorch_manager.get_model_info()
-        
-        return info
-        
-    except Exception as e:
-        logger.error(f"Model info error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        info = await asyncio.to_thread(pytorch_manager.get_model_info)
+        return ModelInfoResponse(info=info)
+    except Exception:
+        logger.exception("Model info error")
+        raise _http_error(500, "MODEL_INFO_ERROR", "Unable to fetch model information.")
 
-@router.post("/models/unload")
+@router.post("/models/unload", response_model=MessageResponse)
 async def unload_model(model_id: Optional[str] = None):
     """
     Unload model to free memory
     """
     try:
         pytorch_manager = get_pytorch_manager()
-        pytorch_manager.unload_model(model_id)
-        
+        await asyncio.to_thread(pytorch_manager.unload_model, model_id)
+
         if model_id:
-            return {"message": f"Model {model_id} unloaded successfully"}
-        else:
-            return {"message": "Current model unloaded successfully"}
-            
-    except Exception as e:
-        logger.error(f"Unload model error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+            return MessageResponse(message=f"Model {model_id} unloaded successfully.")
+        return MessageResponse(message="Current model unloaded successfully.")
+
+    except Exception:
+        logger.exception("Unload model error")
+        raise _http_error(500, "MODEL_UNLOAD_ERROR", "Unable to unload model.")
 
 # Health Check for Enhanced System
-@router.get("/health/enhanced")
+@router.get("/health/enhanced", response_model=HealthSummaryResponse)
 async def enhanced_health_check():
     """
     Comprehensive health check for enhanced system
@@ -499,64 +583,61 @@ async def enhanced_health_check():
         chat_engine = get_enhanced_chat_engine()
         pytorch_manager = get_pytorch_manager()
         internet_manager = get_internet_manager()
-        
-        health_status = {
-            "status": "healthy",
-            "timestamp": datetime.now().isoformat(),
-            "components": {
-                "pytorch_manager": {
-                    "status": "available" if pytorch_manager.current_model else "no_model_loaded",
-                    "device": pytorch_manager.device,
-                    "models_loaded": len([m for m in pytorch_manager.models.values() if m.get("loaded", False)])
-                },
-                "internet_manager": {
-                    "status": "available",
-                    "cache_size": len(internet_manager.cache)
-                },
-                "chat_engine": {
-                    "status": "available",
-                    "current_persona": chat_engine.current_persona,
-                    "context_length": len(chat_engine.context_history)
-                }
-            }
+        components = {
+            "pytorch_manager": HealthComponentStatus(
+                status="available" if pytorch_manager.current_model else "degraded",
+                detail=None,
+            ),
+            "internet_manager": HealthComponentStatus(
+                status="available" if internet_manager.cache is not None else "degraded",
+                detail=None,
+            ),
+            "chat_engine": HealthComponentStatus(
+                status="available",
+                detail=None,
+            ),
         }
-        
-        return health_status
-        
-    except Exception as e:
-        logger.error(f"Enhanced health check error: {e}")
-        return {
-            "status": "unhealthy",
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        }
+        overall_status = "healthy" if all(
+            component.status == "available" for component in components.values()
+        ) else "degraded"
+        if overall_status == "degraded":
+            overall_status = "unhealthy"
+
+        return HealthSummaryResponse(
+            status=overall_status,
+            timestamp=datetime.utcnow().isoformat() + "Z",
+            components=components,
+        )
+
+    except Exception:
+        logger.exception("Enhanced health check error")
+        return HealthSummaryResponse(
+            status="unhealthy",
+            timestamp=datetime.utcnow().isoformat() + "Z",
+            components={"system": HealthComponentStatus(status="unavailable")},
+        )
 
 # Utility endpoint for testing internet connection
-@router.get("/internet/test")
+@router.get("/internet/test", response_model=InternetTestResponse)
 async def test_internet_connection():
     """
     Test internet connectivity and API quotas
     """
     try:
         internet_manager = get_internet_manager()
-        
-        # Test with a simple query
-        test_query = "test connectivity"
-        results = internet_manager.search_duckduckgo_free(test_query)
-        
-        usage_report = internet_manager.get_usage_status()
-        
-        return {
-            "internet_accessible": len(results) > 0,
-            "test_results": len(results),
-            "usage_report": usage_report,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        logger.error(f"Internet test error: {e}")
-        return {
-            "internet_accessible": False,
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        }
+        results = await asyncio.to_thread(internet_manager.search_duckduckgo_free, "connectivity probe")
+        accessible = bool(results)
+        return InternetTestResponse(
+            internet_accessible=accessible,
+            test_results=len(results) if accessible else 0,
+            status="ok" if accessible else "degraded",
+            timestamp=datetime.utcnow().isoformat() + "Z",
+        )
+
+    except Exception:
+        logger.exception("Internet test error")
+        return InternetTestResponse(
+            internet_accessible=False,
+            status="error",
+            timestamp=datetime.utcnow().isoformat() + "Z",
+        )

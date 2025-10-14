@@ -229,20 +229,34 @@ class PyTorchModelManager:
                 model_config.get("quantization", "none")
             )
 
-            # Load model with optimizations
-            model_kwargs = {
-                "dtype": torch.float16 if self.device == "cuda" else torch.float32,
+            preferred_dtype = torch.float16 if self.device == "cuda" else torch.float32
+            base_kwargs = {
                 "device_map": "auto" if self.device == "cuda" else None,
                 "trust_remote_code": True,
             }
-
             if quantization_config:
-                model_kwargs["quantization_config"] = quantization_config
+                base_kwargs["quantization_config"] = quantization_config
 
-            model = AutoModelForCausalLM.from_pretrained(
-                model_name,
-                **model_kwargs
-            )
+            load_kwargs = {**base_kwargs, "dtype": preferred_dtype}
+
+            try:
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    **load_kwargs,
+                )
+            except TypeError as err:
+                if "unexpected keyword argument 'dtype'" in str(err):
+                    logger.debug(
+                        "Transformers version does not support `dtype` keyword; falling back to `torch_dtype`."
+                    )
+                    load_kwargs.pop("dtype", None)
+                    load_kwargs["torch_dtype"] = preferred_dtype
+                    model = AutoModelForCausalLM.from_pretrained(
+                        model_name,
+                        **load_kwargs,
+                    )
+                else:
+                    raise
 
             # Move to device if not using device_map
             if self.device != "cuda":
