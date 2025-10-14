@@ -12,7 +12,11 @@ import json
 # Local imports
 from core.pytorch_manager import get_pytorch_manager
 from tools.internet_access import get_internet_manager
-from core.persona_loader import load_persona_bundle
+from app.personas import load_persona_bundle
+from app.persona_registry import (
+    PERSONA_REGISTRY,
+    resolve_allowed_model_ids,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +33,7 @@ class EnhancedChatEngine:
     def __init__(self):
         self.pytorch_manager = get_pytorch_manager()
         self.internet_manager = get_internet_manager()
-        self.current_persona = "Ashley"
+        self.current_persona = "ashley-girlfriend"
         self.context_history: List[Dict] = []
         self.max_context_length = 4000
         
@@ -60,6 +64,49 @@ class EnhancedChatEngine:
         
         message_lower = message.lower()
         return any(keyword in message_lower for keyword in internet_keywords)
+
+    def _build_context_pairs(self, history: Optional[List[Dict[str, str]]]) -> List[Dict[str, str]]:
+        """Convert message history into paired user/assistant exchanges."""
+        if not history:
+            return []
+        pairs: List[Dict[str, str]] = []
+        last_user: Optional[str] = None
+        for entry in history:
+            role = entry.get("role")
+            content = entry.get("content", "")
+            if role == "user":
+                last_user = content
+            elif role == "assistant" and last_user is not None:
+                pairs.append({"user": last_user, "assistant": content})
+                last_user = None
+        return pairs
+
+    def _resolve_model_selection(
+        self,
+        persona_meta,
+        requested_model: Optional[str],
+    ) -> (Optional[str], List[str]):
+        """Determine which model to use for this request and return allowed model ids."""
+        models_catalog = self.pytorch_manager.list_available_models()
+        allowed_models = resolve_allowed_model_ids(persona_meta, models_catalog)
+
+        selected = requested_model or persona_meta.default_model
+        if selected and selected != "auto":
+            if selected in allowed_models:
+                return selected, allowed_models
+            logger.warning(
+                "Requested model %s not allowed for persona %s; falling back to auto.",
+                selected,
+                persona_meta.id,
+            )
+
+        # Choose first non-auto allowed model
+        for candidate in allowed_models:
+            if candidate != "auto":
+                return candidate, allowed_models
+
+        # Fallback to global default
+        return self.pytorch_manager.config.get("default_model"), allowed_models
     
     def _enhance_prompt_with_persona(self, message: str, persona_name: str) -> str:
         """Enhance prompt with persona context"""
@@ -74,11 +121,12 @@ class EnhancedChatEngine:
         return message
     
     def _create_enhanced_prompt(
-        self, 
-        user_message: str, 
-        persona_name: str,
+        self,
+        user_message: str,
+        persona_id: str,
+        persona_label: str,
         internet_results: Optional[Dict] = None,
-        context: Optional[List[Dict]] = None
+        context: Optional[List[Dict]] = None,
     ) -> str:
         """Create comprehensive prompt with all available context"""
         
@@ -87,7 +135,7 @@ class EnhancedChatEngine:
         
         # Add persona information
         try:
-            persona_bundle = load_persona_bundle([persona_name])
+            persona_bundle = load_persona_bundle([persona_id])
             if persona_bundle:
                 prompt_parts.append(f"PERSONA CONTEXT:\n{persona_bundle}\n")
         except Exception as e:
@@ -115,9 +163,9 @@ class EnhancedChatEngine:
         
         # Add instruction
         instruction = f"""
-Please respond as {persona_name} based on the context provided above. 
+Please respond as {persona_label} based on the context provided above. 
 If internet search results are provided, use them to give current and accurate information.
-Be helpful, engaging, and maintain the personality characteristics of {persona_name}.
+Be helpful, engaging, and maintain the personality characteristics of {persona_label}.
 """
         prompt_parts.append(instruction)
         
@@ -129,7 +177,8 @@ Be helpful, engaging, and maintain the personality characteristics of {persona_n
         persona_name: Optional[str] = None,
         use_internet: Optional[bool] = None,
         model_id: Optional[str] = None,
-        **generation_kwargs
+        history: Optional[List[Dict[str, str]]] = None,
+        **generation_kwargs,
     ) -> Dict[str, Any]:
         """
         Generate response with full feature integration
@@ -139,53 +188,77 @@ Be helpful, engaging, and maintain the personality characteristics of {persona_n
             persona_name: Persona to use (defaults to current)
             use_internet: Force internet usage (auto-detect if None)
             model_id: Specific model to use
+            history: Optional chat history for additional context
             **generation_kwargs: Additional generation parameters
             
         Returns:
             Dict containing response and metadata
         """
         start_time = datetime.now()
-        
-        # Set defaults
-        if persona_name is None:
-            persona_name = self.current_persona
-        
+
+        # Resolve persona metadata
+        persona_meta = None
+        if persona_name:
+            persona_meta = PERSONA_REGISTRY.get(persona_name)
+            if not persona_meta:
+                lowered = persona_name.lower()
+                persona_meta = next(
+                    (meta for meta in PERSONA_REGISTRY.values() if meta.label.lower() == lowered),
+                    None,
+                )
+        if not persona_meta:
+            persona_meta = PERSONA_REGISTRY.get(self.current_persona) or next(iter(PERSONA_REGISTRY.values()))
+
+        persona_id = persona_meta.id
+        persona_label = persona_meta.label
+        self.current_persona = persona_id
+
+        # Build conversation context pairs
+        context_pairs = self._build_context_pairs(history[:-1] if history else [])
+
         if use_internet is None:
             use_internet = self._detect_internet_need(message)
-        
+
+        selected_model_id, allowed_models = self._resolve_model_selection(persona_meta, model_id)
+
         response_data = {
-            'response': '',
-            'persona_used': persona_name,
-            'internet_used': use_internet,
-            'model_used': '',
-            'sources': [],
-            'generation_time': 0,
-            'error': None
+            "response": "",
+            "persona_used": persona_id,
+            "persona_label": persona_label,
+            "internet_used": use_internet,
+            "model_used": selected_model_id or "",
+            "allowed_models": allowed_models,
+            "sources": [],
+            "generation_time": 0,
+            "error": None,
         }
-        
+
         try:
-            # Load specific model if requested
-            if model_id and not self.pytorch_manager.current_model:
-                if not self.pytorch_manager.load_model(model_id):
-                    response_data['error'] = f"Failed to load model {model_id}"
+            # Load target model (if any)
+            if selected_model_id:
+                if not self.pytorch_manager.load_model(selected_model_id):
+                    response_data["error"] = f"Failed to load model {selected_model_id}"
+                    response_data["model_used"] = selected_model_id
+                    response_data["response"] = self._generate_fallback_response(message, persona_meta)
                     return response_data
-            
+
             # Get internet information if needed
             internet_results = None
             if use_internet:
                 try:
                     internet_results = self.internet_manager.comprehensive_search(message)
-                    response_data['sources'] = internet_results.get('sources_used', [])
+                    response_data["sources"] = internet_results.get("sources_used", [])
                 except Exception as e:
                     logger.warning(f"Internet search failed: {e}")
                     # Continue without internet
             
             # Create enhanced prompt
             enhanced_prompt = self._create_enhanced_prompt(
-                message, 
-                persona_name,
+                message,
+                persona_id,
+                persona_label,
                 internet_results,
-                self.context_history
+                context_pairs
             )
             
             # Generate response using PyTorch or OpenAI API model
@@ -195,14 +268,14 @@ Be helpful, engaging, and maintain the personality characteristics of {persona_n
                         enhanced_prompt,
                         **generation_kwargs
                     )
-                    response_data['response'] = response_text
-                    response_data['model_used'] = 'pytorch'
+                    response_data["response"] = response_text
+                    response_data["model_used"] = selected_model_id or "pytorch"
                 except Exception as e:
                     logger.error(f"PyTorch generation failed: {e}")
-                    response_data['response'] = self._generate_fallback_response(message, persona_name)
-                    response_data['model_used'] = 'fallback'
-                    response_data['error'] = f"PyTorch error: {str(e)}"
-            elif self.pytorch_manager.models.get('openai', {}).get('loaded', False):
+                    response_data["response"] = self._generate_fallback_response(message, persona_meta)
+                    response_data["model_used"] = "fallback"
+                    response_data["error"] = f"PyTorch error: {str(e)}"
+            elif self.pytorch_manager.models.get("openai", {}).get("loaded", False):
                 # Use OpenAI API for response
                 try:
                     import openai
@@ -215,59 +288,62 @@ Be helpful, engaging, and maintain the personality characteristics of {persona_n
                         top_p=generation_kwargs.get('top_p', 0.9)
                     )
                     response_text = completion.choices[0].message['content']
-                    response_data['response'] = response_text
-                    response_data['model_used'] = 'openai'
+                    response_data["response"] = response_text
+                    response_data["model_used"] = selected_model_id or "openai"
                 except Exception as e:
                     logger.error(f"OpenAI API generation failed: {e}")
-                    response_data['response'] = self._generate_fallback_response(message, persona_name)
-                    response_data['model_used'] = 'fallback'
-                    response_data['error'] = f"OpenAI API error: {str(e)}"
+                    response_data["response"] = self._generate_fallback_response(message, persona_meta)
+                    response_data["model_used"] = "fallback"
+                    response_data["error"] = f"OpenAI API error: {str(e)}"
             else:
-                response_data['response'] = self._generate_fallback_response(message, persona_name)
-                response_data['model_used'] = 'fallback'
-                response_data['error'] = "No model loaded"
-            
+                response_data["response"] = self._generate_fallback_response(message, persona_meta)
+                response_data["model_used"] = "fallback"
+                response_data["error"] = "No model loaded"
+
             # Update context history
-            self._update_context_history(message, response_data['response'])
-            
+            self._update_context_history(context_pairs, message, response_data["response"])
+
         except Exception as e:
-            logger.error(f"Error in generate_response: {e}")
-            response_data['response'] = "I apologize, but I encountered an error processing your request. Please try again."
-            response_data['error'] = str(e)
+            logger.exception("Error in generate_response")
+            response_data["response"] = (
+                "I apologize, but I encountered an error processing your request. Please try again."
+            )
+            response_data["error"] = str(e)
         
         # Calculate generation time
-        response_data['generation_time'] = (datetime.now() - start_time).total_seconds()
-        
+        response_data["generation_time"] = (datetime.now() - start_time).total_seconds()
         return response_data
     
-    def _generate_fallback_response(self, message: str, persona_name: str) -> str:
+    def _generate_fallback_response(self, message: str, persona_meta) -> str:
         """Generate fallback response when PyTorch is unavailable"""
         try:
             # Try to use persona context for a more personalized fallback
-            persona_bundle = load_persona_bundle([persona_name])
-            if persona_bundle and persona_name.lower() == 'ashley':
-                return f"Hi there! I'm Ashley, and I'd love to help you with '{message}'. However, I'm currently experiencing some technical issues with my advanced AI capabilities. Could you please try again in a moment?"
+            persona_bundle = load_persona_bundle([persona_meta.id])
+            if persona_bundle and persona_meta.id == "ashley-girlfriend":
+                return (
+                    f"Hi there! I'm {persona_meta.label}, and I'd love to help you with '{message}'. "
+                    "I'm experiencing a technical hiccup, so please try again in a moment."
+                )
             elif persona_bundle:
-                return f"Hello! As {persona_name}, I want to assist you with '{message}', but I'm currently having some technical difficulties. Please try again shortly."
+                return (
+                    f"Hello! As {persona_meta.label}, I want to assist you with '{message}', "
+                    "but I'm currently having some technical difficulties. Please try again shortly."
+                )
             else:
                 return f"I understand you're asking about '{message}'. I'm currently experiencing technical issues but I'm here to help as soon as possible. Please try again in a moment."
                 
         except Exception:
             return "I'm currently experiencing technical difficulties. Please try again in a moment."
-    
-    def _update_context_history(self, user_message: str, assistant_response: str):
+
+    def _update_context_history(self, pairs: List[Dict[str, str]], user_message: str, assistant_response: str):
         """Update conversation context history"""
         context_entry = {
-            'user': user_message,
-            'assistant': assistant_response,
-            'timestamp': datetime.now().isoformat()
+            "user": user_message,
+            "assistant": assistant_response,
+            "timestamp": datetime.now().isoformat(),
         }
-        
-        self.context_history.append(context_entry)
-        
-        # Trim context if too long
-        while len(self.context_history) > 10:  # Keep last 10 exchanges
-            self.context_history.pop(0)
+        history = pairs + [context_entry]
+        self.context_history = history[-10:]
     
     def set_persona(self, persona_name: str) -> bool:
         """Set the current persona"""

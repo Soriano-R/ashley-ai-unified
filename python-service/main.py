@@ -35,7 +35,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse
 
 # Configure logging
 logging.basicConfig(
@@ -46,6 +46,8 @@ logger = logging.getLogger(__name__)
 
 # Import your existing backend logic
 from app.orchestrator import ChatOrchestrator
+from app.persona_registry import MODEL_CATEGORIES, persona_payload
+from core.pytorch_manager import get_pytorch_manager
 
 # Import enhanced API routes
 try:
@@ -55,17 +57,6 @@ try:
 except ImportError as e:
     logger.warning(f"Enhanced features not available: {e}")
     ENHANCED_FEATURES_AVAILABLE = False
-
-
-class ChatRequest(BaseModel):
-    message: str
-    persona: str = "Ashley"
-    session_id: str = "default"
-
-
-class ChatResponse(BaseModel):
-    response: str
-    session_id: str
 
 
 @asynccontextmanager
@@ -125,60 +116,20 @@ def create_app() -> FastAPI:
         }
         return status
     
-    # Legacy chat endpoint (for backward compatibility)
     @app.post("/chat/stream")
-    async def stream_chat(request: ChatRequest):
-        if not orchestrator:
-            raise HTTPException(status_code=500, detail="Orchestrator not initialized")
-        
-        try:
-            # Create a basic chat state for the request
-            from app.state import ChatState
-            state = ChatState(session_id=request.session_id)
-            state.persona = request.persona or "Ashley"
-            
-            # Use the orchestrator to generate response
-            result_generator = orchestrator.stream_reply(
-                state=state,
-                user_text=request.message
-            )
-            
-            # Collect the streaming response
-            response_text = ""
-            for chunk in result_generator:
-                if isinstance(chunk, str):
-                    response_text += chunk
-            
-            return ChatResponse(response=response_text, session_id=request.session_id)
-        except Exception as e:
-            logger.error(f"Chat error: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-    
-    @app.get("/chat/models")
-    async def get_models():
-        models = [
-            {"name": "gpt-4o", "description": "Advanced reasoning and vision"},
-            {"name": "gpt-4o-mini", "description": "Fast and efficient"},
-        ]
-        
-        # Add PyTorch models if available
-        if ENHANCED_FEATURES_AVAILABLE:
-            try:
-                from core.pytorch_manager import get_pytorch_manager
-                pytorch_manager = get_pytorch_manager()
-                pytorch_models = pytorch_manager.list_available_models()
-                for model in pytorch_models:
-                    models.append({
-                        "name": model["id"],
-                        "description": f"PyTorch: {model['description']}",
-                        "type": "pytorch"
-                    })
-            except Exception as e:
-                logger.warning(f"Could not load PyTorch models: {e}")
-        
-        return models
-    
+    async def deprecated_stream_chat():
+        return JSONResponse(
+            status_code=410,
+            content={"error": "Deprecated. Use /api/chat for chat streaming."}
+        )
 
+    @app.get("/chat/models")
+    async def deprecated_models():
+        return JSONResponse(
+            status_code=410,
+            content={"error": "Deprecated. Use /api/chat/models for model listing."}
+        )
+    
     import hashlib
     import json
     from fastapi import Request
@@ -229,14 +180,13 @@ def create_app() -> FastAPI:
     
     @app.get("/personas")
     async def get_personas():
-        return [
-            {"name": "Ashley", "description": "Friendly AI assistant"},
-            {"name": "Python Expert", "description": "Python programming specialist"},
-            {"name": "SQL Expert", "description": "Database and SQL specialist"},
-            {"name": "Technical Expert", "description": "Technical analysis and engineering"},
-            {"name": "Creative Muse", "description": "Creative writing and artistic inspiration"},
-            {"name": "Data Analyst", "description": "Data analysis and business intelligence"},
-        ]
+        manager = get_pytorch_manager()
+        models = manager.list_available_models()
+        return {
+            "personas": persona_payload(models),
+            "models": models,
+            "categories": MODEL_CATEGORIES,
+        }
     
     return app
 

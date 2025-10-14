@@ -31,7 +31,7 @@ export default function ImageGeneration({ isOpen, onClose, persona }: ImageGener
     setError(null)
 
     try {
-      const response = await fetch('/api/media/generate', {
+      const response = await fetch('/api/image', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -46,15 +46,20 @@ export default function ImageGeneration({ isOpen, onClose, persona }: ImageGener
       })
 
       if (!response.ok) {
-        throw new Error('Image generation failed')
+        let errorMsg = 'Image generation failed'
+        try {
+          const errResult = await response.json()
+          errorMsg = errResult?.error || errorMsg
+        } catch {}
+        throw new Error(errorMsg)
       }
 
       const result = await response.json()
-      if (!result.success) {
+      if (!result || (!result.success && !result.image_url)) {
         throw new Error(result.error || 'Image generation failed')
       }
 
-      setGeneratedImage(result.image_url)
+      setGeneratedImage(result.image_url || result.url || null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred')
     } finally {

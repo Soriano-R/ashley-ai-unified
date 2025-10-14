@@ -383,7 +383,8 @@ export default function UserManager({ isOpen, onClose }: UserManagerProps) {
               </form>
             </div>
           </div>
-          {activeTab === 'users' && (
+        )}
+        {activeTab === 'users' && (
             <div className="space-y-6">
               {/* Search and Controls */}
               <div className="flex items-center justify-between">
@@ -589,8 +590,6 @@ export default function UserManager({ isOpen, onClose }: UserManagerProps) {
                   </div>
                 </div>
               )}
-              </div>
-
               {/* Users List */}
               <div className="space-y-4">
                 {filteredUsers.map(user => (
@@ -826,7 +825,6 @@ export default function UserManager({ isOpen, onClose }: UserManagerProps) {
             </div>
           )}
         </div>
-      )}
     </div>
   );
 }

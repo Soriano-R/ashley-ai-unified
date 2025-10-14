@@ -2,13 +2,15 @@
 Enhanced API Routes for Ashley AI with PyTorch and Internet Access
 """
 
-from fastapi import APIRouter, HTTPException, BackgroundTasks
-from pydantic import BaseModel, Field
-from typing import Dict, List, Optional, Any, Union
 import logging
-from datetime import datetime
+from uuid import uuid4
+from typing import Any, Dict, List, Optional, Tuple
 
-# Import managers
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, root_validator
+
+from app.persona_registry import MODEL_CATEGORIES, PERSONA_CATEGORIES, persona_payload
 from core.enhanced_chat_engine import get_enhanced_chat_engine
 from core.pytorch_manager import get_pytorch_manager
 from tools.internet_access import get_internet_manager
@@ -17,28 +19,74 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Request/Response Models
+
+class ChatMessagePayload(BaseModel):
+    role: str
+    content: str
+
+    @root_validator(pre=True)
+    def validate_fields(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        role = (values.get("role") or "").strip().lower()
+        content = values.get("content")
+        if role not in {"system", "user", "assistant"}:
+            raise ValueError("role must be 'system', 'user', or 'assistant'")
+        if content is None or str(content).strip() == "":
+            raise ValueError("content is required for each chat message")
+        values["role"] = role
+        values["content"] = str(content)
+        return values
+
+
 class EnhancedChatRequest(BaseModel):
-    message: str = Field(..., description="User message")
-    persona: Optional[str] = Field(None, description="Persona to use")
-    use_internet: Optional[bool] = Field(None, description="Force internet usage")
-    model_id: Optional[str] = Field(None, description="Specific model to use")
-    max_new_tokens: Optional[int] = Field(1024, description="Maximum tokens to generate")
-    temperature: Optional[float] = Field(0.7, description="Sampling temperature")
-    top_p: Optional[float] = Field(0.9, description="Top-p sampling")
+    message: Optional[str] = Field(
+        None, description="Latest user message. Optional if provided in messages history."
+    )
+    messages: Optional[List[ChatMessagePayload]] = Field(
+        default=None,
+        description="Full conversation history in chronological order.",
+    )
+    persona: Optional[str] = Field(None, description="Persona identifier to use.")
+    use_internet: Optional[bool] = Field(
+        None, description="Force internet usage (auto-detect when omitted)."
+    )
+    model_id: Optional[str] = Field(
+        None, description="Specific model to use. Use 'auto' for automatic routing."
+    )
+    max_new_tokens: Optional[int] = Field(
+        1024, description="Maximum tokens to generate for this response."
+    )
+    temperature: Optional[float] = Field(
+        0.7, description="Sampling temperature for generation."
+    )
+    top_p: Optional[float] = Field(0.9, description="Top-p nucleus sampling value.")
+
+    @root_validator(pre=True)
+    def ensure_message_payload(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        message = values.get("message")
+        messages = values.get("messages")
+        if not message and not messages:
+            raise ValueError("Either 'message' or 'messages' must be provided.")
+        return values
+
 
 class EnhancedChatResponse(BaseModel):
     response: str
+    message: str
+    messages: List[Dict[str, str]]
     persona_used: str
+    persona_label: Optional[str] = None
     internet_used: bool
-    model_used: str
-    sources: List[str]
+    model_used: Optional[str] = None
+    allowed_models: List[str] = Field(default_factory=list)
+    sources: List[str] = Field(default_factory=list)
     generation_time: float
-    error: Optional[str]
+    error: Optional[str] = None
+
 
 class InternetSearchRequest(BaseModel):
     query: str = Field(..., description="Search query")
-    max_results: Optional[int] = Field(5, description="Maximum results")
+    max_results: Optional[int] = Field(5, description="Maximum results to return.")
+
 
 class InternetSearchResponse(BaseModel):
     query: str
@@ -47,11 +95,14 @@ class InternetSearchResponse(BaseModel):
     sources_used: List[str]
     timestamp: str
 
+
 class ModelSwitchRequest(BaseModel):
     model_id: str = Field(..., description="Model ID to switch to")
 
+
 class PersonaSetRequest(BaseModel):
     persona_name: str = Field(..., description="Persona name to set")
+
 
 class SystemStatusResponse(BaseModel):
     pytorch_models: Dict[str, Any]
@@ -60,13 +111,154 @@ class SystemStatusResponse(BaseModel):
     context_length: int
     system_time: str
 
+
 class ModelListResponse(BaseModel):
     models: List[Dict[str, Any]]
 
+
 class FineTuningRequest(BaseModel):
     model_id: str = Field(..., description="Model to prepare for fine-tuning")
-    lora_config: Optional[Dict[str, Any]] = Field(None, description="LoRA configuration")
+    lora_config: Optional[Dict[str, Any]] = Field(
+        None, description="LoRA configuration"
+    )
 
+
+def _resolve_history_and_message(
+    request: EnhancedChatRequest,
+) -> Tuple[List[Dict[str, str]], str]:
+    history: List[Dict[str, str]] = []
+    if request.messages:
+        history = [msg.dict() for msg in request.messages]
+
+    latest_message = request.message
+    if latest_message:
+        latest_message = latest_message.strip()
+        if not latest_message:
+            latest_message = None
+
+    if not latest_message and history:
+        latest_message = history[-1]["content"]
+
+    if not latest_message:
+        raise HTTPException(
+            status_code=400,
+            detail="Unable to resolve user message from payload.",
+        )
+
+    if request.message:
+        # Ensure latest user turn is present in history when message provided separately.
+        if not history or history[-1]["content"] != request.message:
+            history.append({"role": "user", "content": request.message.strip()})
+
+    return history, latest_message
+
+
+# Proxy-compatible endpoints for Next.js
+@router.post("/chat", response_model=EnhancedChatResponse)
+async def proxy_chat(request: EnhancedChatRequest):
+    try:
+        history, user_message = _resolve_history_and_message(request)
+
+        chat_engine = get_enhanced_chat_engine()
+        result = chat_engine.generate_response(
+            message=user_message,
+            persona_name=request.persona,
+            history=history,
+            use_internet=request.use_internet,
+            model_id=request.model_id,
+            max_new_tokens=request.max_new_tokens,
+            temperature=request.temperature,
+            top_p=request.top_p,
+        )
+
+        assistant_text = result.get("response") or ""
+        conversation = [*history, {"role": "assistant", "content": assistant_text}]
+
+        payload = {
+            **result,
+            "response": assistant_text,
+            "message": assistant_text,
+            "messages": conversation,
+            "allowed_models": result.get("allowed_models", []),
+        }
+        return JSONResponse(payload)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Proxy chat error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chat/models")
+async def proxy_chat_models():
+    try:
+        pytorch_manager = get_pytorch_manager()
+        models = pytorch_manager.list_available_models()
+        return {
+            "models": models,
+            "categories": MODEL_CATEGORIES,
+            "model_categories": MODEL_CATEGORIES,
+        }
+    except Exception as e:
+        logger.error(f"Proxy chat models error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/personas")
+async def proxy_personas():
+    try:
+        pytorch_manager = get_pytorch_manager()
+        models = pytorch_manager.list_available_models()
+        personas = persona_payload(models)
+        return {
+            "personas": personas,
+            "models": models,
+            "persona_categories": PERSONA_CATEGORIES,
+            "model_categories": MODEL_CATEGORIES,
+        }
+    except Exception as e:
+        logger.error(f"Proxy personas error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/image")
+async def proxy_image(payload: Dict[str, Any]):
+    try:
+        prompt = (payload.get("prompt") or "").strip()
+        if not prompt:
+            raise HTTPException(status_code=400, detail="Prompt is required")
+
+        size = (payload.get("size") or "1024x1024").lower()
+        width, height = {
+            "1792x1024": (1792, 1024),
+            "1024x1792": (1024, 1792),
+        }.get(size, (1024, 1024))
+
+        seed = uuid4().hex
+        image_url = f"https://picsum.photos/seed/{seed}/{width}/{height}"
+        return {
+            "success": True,
+            "image_url": image_url,
+            "prompt_used": prompt,
+            "persona_used": payload.get("persona"),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Proxy image error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/internet")
+async def proxy_internet(payload: 'InternetSearchRequest'):
+    try:
+        internet_manager = get_internet_manager()
+        results = internet_manager.comprehensive_search(payload.query)
+        return results
+    except Exception as e:
+        logger.error(f"Proxy internet error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Request/Response Models
 # Enhanced Chat Endpoint
 @router.post("/chat/enhanced", response_model=EnhancedChatResponse)
 async def enhanced_chat(request: EnhancedChatRequest):

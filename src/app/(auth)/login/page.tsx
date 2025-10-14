@@ -15,9 +15,10 @@ export default function LoginPage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
+      credentials: 'include'
     });
     if (res.ok) {
-      router.push('/');
+      router.push('/dashboard');
     } else {
       const data = await res.json();
       setError(data.error || 'Login failed');

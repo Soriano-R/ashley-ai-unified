@@ -18,9 +18,11 @@ export interface User {
 // Represents a single chat message
 export interface Message {
   id: string                    // Unique identifier for the message
-  role: 'user' | 'assistant'    // Who sent the message
+  role: 'system' | 'user' | 'assistant' // Who sent the message
   content: string               // The actual message text
   timestamp: Date               // When the message was sent
+  personaId?: string            // Optional persona that influenced this message
+  isStreaming?: boolean         // Flag if this message is currently streaming from backend
 }
 
 // Represents a chat session/conversation
@@ -28,6 +30,8 @@ export interface Session {
   id: string                    // Unique identifier for the session
   title: string                 // Display title for the session (usually first message preview)
   messages: Message[]           // Array of all messages in this session
+  personaId?: string            // Default persona for this session
+  modelId?: string              // Preferred model for this session
 }
 
 // Props for the ChatArea component
@@ -51,5 +55,44 @@ export interface SidebarProps {
   onOpenSettings?: () => void                  // Optional function to open settings modal
   onOpenAdminPanel?: () => void                // Optional function to open admin panel (admin only)
   onOpenUserManager?: () => void               // Optional function to open user management panel/modal
+  onRenameSession?: (sessionId: string, newTitle: string) => void // Optional rename handler
+  onDeleteSession?: (sessionId: string) => void // Optional delete handler
   user?: User                                  // Current user information
+}
+
+export interface PersonaOption {
+  id: string
+  label: string
+  files?: string[]
+  description: string
+  tags: string[]
+  category: string
+  nsfw: boolean
+  defaultModel: string
+  allowedModelCategories: string[]
+  allowedModelIds?: string[]
+  categoryMeta?: {
+    label: string
+    description: string
+  }
+}
+
+export interface PersonaCatalogResponse {
+  personas: PersonaOption[]
+  models: ModelOption[]
+  personaCategories: Record<string, { label: string; description: string }>
+  modelCategories: Record<string, { label: string; description: string }>
+}
+
+export interface ModelOption {
+  id: string
+  name: string
+  description: string
+  model_name?: string
+  max_length?: number
+  quantization: string
+  format?: string
+  categories: string[]
+  capabilities: string[]
+  loaded: boolean
 }

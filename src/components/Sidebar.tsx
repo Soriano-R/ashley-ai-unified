@@ -1,6 +1,18 @@
 import { SidebarProps } from '@/types'
-import { PlusIcon, ChatBubbleLeftIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, BookOpenIcon, CogIcon, UsersIcon, ChevronDownIcon } from '@heroicons/react/24/outline'
-import { useState, useRef, useEffect } from 'react'
+import {
+  PlusIcon,
+  ChatBubbleLeftIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  MagnifyingGlassIcon,
+  BookOpenIcon,
+  CogIcon,
+  UsersIcon,
+  ChevronDownIcon,
+  PencilSquareIcon,
+  TrashIcon,
+} from '@heroicons/react/24/outline'
+import { useState, useRef, useEffect, MouseEvent as ReactMouseEvent } from 'react'
 
 /**
  * Sidebar Component - Left navigation panel
@@ -8,21 +20,24 @@ import { useState, useRef, useEffect } from 'react'
  * Can be collapsed to save space - when collapsed, only shows core navigation
  * Shows different features based on user role (admin vs user)
  */
-export default function Sidebar({ 
-  sessions, 
-  activeSessionId, 
-  onNewChat, 
-  onSelectSession, 
-  isCollapsed, 
+export default function Sidebar({
+  sessions,
+  activeSessionId,
+  onNewChat,
+  onSelectSession,
+  isCollapsed,
   onToggleCollapse,
   onSignOut,
   onOpenSettings,
   onOpenAdminPanel,
   onOpenUserManager,
+  onRenameSession,
+  onDeleteSession,
   user
 }: SidebarProps) {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const [contextMenu, setContextMenu] = useState<{ sessionId: string; x: number; y: number } | null>(null)
 
   // Function to get user initials (first letter of first and last name)
   const getUserInitials = (name: string): string => {
@@ -39,7 +54,7 @@ export default function Sidebar({
 
   // Close menu when clicking outside
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
+    function handleClickOutside(event: globalThis.MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setShowUserMenu(false)
       }
@@ -50,7 +65,64 @@ export default function Sidebar({
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [showUserMenu])
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const handleGlobalClick = () => setContextMenu(null)
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setContextMenu(null)
+      }
+    }
+    document.addEventListener('click', handleGlobalClick)
+    document.addEventListener('contextmenu', handleGlobalClick)
+    document.addEventListener('keydown', handleEscape)
+    return () => {
+      document.removeEventListener('click', handleGlobalClick)
+      document.removeEventListener('contextmenu', handleGlobalClick)
+      document.removeEventListener('keydown', handleEscape)
+    }
+  }, [contextMenu])
+
+  const handleSessionContextMenu = (event: ReactMouseEvent<HTMLButtonElement>, sessionId: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+    const menuWidth = 192
+    const menuHeight = 96
+    const offset = 8
+    const viewportWidth = window.innerWidth
+    const viewportHeight = window.innerHeight
+    const clampedX = Math.min(event.clientX, viewportWidth - menuWidth - offset)
+    const clampedY = Math.min(event.clientY, viewportHeight - menuHeight - offset)
+    setContextMenu({
+      sessionId,
+      x: Math.max(offset, clampedX),
+      y: Math.max(offset, clampedY),
+    })
+  }
+
+  const handleRename = () => {
+    if (!contextMenu || !onRenameSession) return
+    const currentSession = sessions.find((session) => session.id === contextMenu.sessionId)
+    const proposed = window.prompt('Rename chat session', currentSession?.title ?? '')
+    const trimmed = proposed?.trim()
+    if (trimmed) {
+      onRenameSession(contextMenu.sessionId, trimmed)
+    }
+    setContextMenu(null)
+  }
+
+  const handleDelete = () => {
+    if (!contextMenu || !onDeleteSession) return
+    const confirmed = window.confirm('Delete this chat session? This action cannot be undone.')
+    if (confirmed) {
+      onDeleteSession(contextMenu.sessionId)
+    }
+    setContextMenu(null)
+  }
+
   return (
+    <>
     <div className={`${isCollapsed ? 'w-16' : 'w-64'} bg-gray-950 flex flex-col h-screen transition-all duration-300`}>
       {/* Header Section - Contains the New Chat button and collapse toggle */}
       <div className="p-3 border-b border-gray-700">
@@ -105,12 +177,14 @@ export default function Sidebar({
             {user?.role === 'admin' && (
               <>
                 <button
+                  onClick={onOpenAdminPanel ?? (() => alert('Admin panel currently unavailable'))}
                   className="p-2 text-red-400 hover:text-red-300 hover:bg-gray-800 rounded-md transition-colors"
                   title="Admin Settings"
                 >
                   <CogIcon className="w-4 h-4" />
                 </button>
                 <button
+                  onClick={onOpenUserManager ?? (() => alert('User management currently unavailable'))}
                   className="p-2 text-red-400 hover:text-red-300 hover:bg-gray-800 rounded-md transition-colors"
                   title="User Management"
                 >
@@ -146,6 +220,7 @@ export default function Sidebar({
             <button
               key={session.id}
               onClick={() => onSelectSession(session.id)}
+              onContextMenu={(event) => handleSessionContextMenu(event, session.id)}
               className={`w-full text-left p-3 rounded-md mb-1 transition-colors ${
                 session.id === activeSessionId
                   ? 'bg-gray-800 text-white' // Active session styling
@@ -291,5 +366,30 @@ export default function Sidebar({
         )}
       </div>
     </div>
+    {contextMenu && (
+      <div className="fixed inset-0 z-50" onClick={() => setContextMenu(null)}>
+        <div
+          className="absolute bg-gray-800 border border-gray-600 rounded-md shadow-xl w-48 py-2"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            onClick={handleRename}
+            className="w-full px-3 py-2 text-left text-sm text-gray-200 hover:bg-gray-700 flex items-center gap-2"
+          >
+            <PencilSquareIcon className="w-4 h-4" />
+            Rename
+          </button>
+          <button
+            onClick={handleDelete}
+            className="w-full px-3 py-2 text-left text-sm text-red-200 hover:bg-red-700/40 flex items-center gap-2"
+          >
+            <TrashIcon className="w-4 h-4" />
+            Delete
+          </button>
+        </div>
+      </div>
+    )}
+    </>
   )
 }

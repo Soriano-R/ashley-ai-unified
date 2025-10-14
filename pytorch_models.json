@@ -2,59 +2,436 @@
   "models": {
     "llama-3.1-8b": {
       "model_name": "meta-llama/Meta-Llama-3.1-8B-Instruct",
+      "display_name": "Llama 3.1 8B Instruct",
       "max_length": 8192,
       "quantization": "pytorch",
-      "description": "Llama 3.1 8B - Balanced performance and memory"
-      },
-      "llama-3.1-8b-gguf": {
-        "model_name": "meta-llama/Meta-Llama-3.1-8B-Instruct",
-        "max_length": 8192,
-        "quantization": "gguf",
-        "description": "Llama 3.1 8B - Balanced performance and memory (GGUF)"
+      "format": "pytorch",
+      "description": "Balanced Meta Llama model for general conversation and reasoning.",
+      "categories": [
+        "general"
+      ],
+      "capabilities": [
+        "general",
+        "conversation"
+      ]
     },
-    "llama-3.1-70b": {
-      "model_name": "meta-llama/Meta-Llama-3.1-70B-Instruct",
+    "llama-3.1-8b-gguf": {
+      "model_name": "meta-llama/Meta-Llama-3.1-8B-Instruct",
+      "display_name": "Llama 3.1 8B (GGUF)",
       "max_length": 8192,
-      "quantization": "pytorch",
-      "description": "Llama 3.1 70B - High performance (requires >20GB GPU)"
-      },
-      "llama-3.1-70b-gguf": {
-        "model_name": "meta-llama/Meta-Llama-3.1-70B-Instruct",
-        "max_length": 8192,
-        "quantization": "gguf",
-        "description": "Llama 3.1 70B - High performance (GGUF)"
+      "quantization": "gguf",
+      "format": "gguf",
+      "description": "Quantised GGUF build of Llama 3.1 8B for CPU-friendly inference.",
+      "categories": [
+        "general"
+      ],
+      "capabilities": [
+        "general",
+        "conversation"
+      ]
     },
     "qwen-2.5-7b": {
       "model_name": "Qwen/Qwen2.5-7B-Instruct",
+      "display_name": "Qwen 2.5 7B Instruct",
       "max_length": 32768,
       "quantization": "pytorch",
-      "description": "Qwen 2.5 7B - Long context support"
-      },
-      "qwen-2.5-7b-gguf": {
-        "model_name": "Qwen/Qwen2.5-7B-Instruct",
-        "max_length": 32768,
-        "quantization": "gguf",
-        "description": "Qwen 2.5 7B - Long context support (GGUF)"
+      "format": "pytorch",
+      "description": "Long-context assistant suited for analytics, coding, and dialogue.",
+      "categories": [
+        "general",
+        "data-analytics",
+        "ml-ai"
+      ],
+      "capabilities": [
+        "analysis",
+        "coding",
+        "conversation"
+      ]
+    },
+    "qwen-2.5-7b-gguf": {
+      "model_name": "Qwen/Qwen2.5-7B-Instruct",
+      "display_name": "Qwen 2.5 7B (GGUF)",
+      "max_length": 32768,
+      "quantization": "gguf",
+      "format": "gguf",
+      "description": "GGUF build of Qwen 2.5 7B for CPU inference with long context.",
+      "categories": [
+        "general",
+        "data-analytics",
+        "ml-ai"
+      ],
+      "capabilities": [
+        "analysis",
+        "coding",
+        "conversation"
+      ]
+    },
+    "mistral-7b": {
+      "model_name": "mistralai/Mistral-7B-Instruct-v0.2",
+      "display_name": "Mistral 7B Instruct",
+      "max_length": 8192,
+      "quantization": "pytorch",
+      "format": "pytorch",
+      "description": "Lightweight general-purpose model for fast interactive chats.",
+      "categories": [
+        "general"
+      ],
+      "capabilities": [
+        "general",
+        "conversation"
+      ]
+    },
+    "mistral-7b-gguf": {
+      "model_name": "mistralai/Mistral-7B-Instruct-v0.2",
+      "display_name": "Mistral 7B (GGUF)",
+      "max_length": 8192,
+      "quantization": "gguf",
+      "format": "gguf",
+      "description": "Quantised GGUF build of Mistral 7B for low-resource deployments.",
+      "categories": [
+        "general"
+      ],
+      "capabilities": [
+        "general",
+        "conversation"
+      ]
     },
     "code-llama-13b": {
       "model_name": "codellama/CodeLlama-13b-Instruct-hf",
+      "display_name": "Code Llama 13B Instruct",
       "max_length": 16384,
       "quantization": "pytorch",
-      "description": "Code Llama 13B - Specialized for coding"
-      },
-      "code-llama-13b-gguf": {
-        "model_name": "codellama/CodeLlama-13b-Instruct-hf",
-        "max_length": 16384,
-        "quantization": "gguf",
-        "description": "Code Llama 13B - Specialized for coding (GGUF)"
+      "format": "pytorch",
+      "description": "Code-focused Llama variant for Python, SQL, and scripting tasks.",
+      "categories": [
+        "ml-ai"
+      ],
+      "capabilities": [
+        "coding",
+        "analysis"
+      ]
+    },
+    "code-llama-13b-gguf": {
+      "model_name": "codellama/CodeLlama-13b-Instruct-hf",
+      "display_name": "Code Llama 13B (GGUF)",
+      "max_length": 16384,
+      "quantization": "gguf",
+      "format": "gguf",
+      "description": "GGUF conversion of Code Llama 13B for CPU-first workflows.",
+      "categories": [
+        "ml-ai"
+      ],
+      "capabilities": [
+        "coding",
+        "analysis"
+      ]
+    },
+    "deepseek-coder-v2": {
+      "model_name": "deepseek-ai/DeepSeek-Coder-V2-Instruct",
+      "display_name": "DeepSeek Coder V2",
+      "max_length": 8192,
+      "quantization": "pytorch",
+      "format": "pytorch",
+      "description": "Versatile coding assistant with strong reasoning for automation.",
+      "categories": [
+        "ml-ai"
+      ],
+      "capabilities": [
+        "coding",
+        "analysis",
+        "reasoning"
+      ]
+    },
+    "deepseek-coder-v2-gguf": {
+      "model_name": "deepseek-ai/DeepSeek-Coder-V2-Instruct",
+      "display_name": "DeepSeek Coder V2 (GGUF)",
+      "max_length": 8192,
+      "quantization": "gguf",
+      "format": "gguf",
+      "description": "GGUF variant of DeepSeek Coder V2 for CPU and edge serving.",
+      "categories": [
+        "ml-ai"
+      ],
+      "capabilities": [
+        "coding",
+        "analysis",
+        "reasoning"
+      ]
+    },
+    "deepseek-r1": {
+      "model_name": "deepseek-ai/DeepSeek-R1",
+      "display_name": "DeepSeek R1",
+      "max_length": 8192,
+      "quantization": "pytorch",
+      "format": "pytorch",
+      "description": "Reasoning-centric DeepSeek model for engineering discussions.",
+      "categories": [
+        "ml-ai"
+      ],
+      "capabilities": [
+        "coding",
+        "reasoning",
+        "general"
+      ]
+    },
+    "deepseek-r1-gguf": {
+      "model_name": "deepseek-ai/DeepSeek-R1",
+      "display_name": "DeepSeek R1 (GGUF)",
+      "max_length": 8192,
+      "quantization": "gguf",
+      "format": "gguf",
+      "description": "GGUF build of DeepSeek R1 for CPU inference.",
+      "categories": [
+        "ml-ai"
+      ],
+      "capabilities": [
+        "coding",
+        "reasoning",
+        "general"
+      ]
+    },
+    "deepseek-math-7b": {
+      "model_name": "deepseek-ai/deepseek-math-7b-instruct",
+      "display_name": "DeepSeek Math 7B",
+      "max_length": 8192,
+      "quantization": "pytorch",
+      "format": "pytorch",
+      "description": "Math and quantitative analysis specialist with strong reasoning.",
+      "categories": [
+        "ml-ai",
+        "data-analytics"
+      ],
+      "capabilities": [
+        "math",
+        "analysis",
+        "reasoning"
+      ]
+    },
+    "deepseek-math-7b-gguf": {
+      "model_name": "deepseek-ai/deepseek-math-7b-instruct",
+      "display_name": "DeepSeek Math 7B (GGUF)",
+      "max_length": 8192,
+      "quantization": "gguf",
+      "format": "gguf",
+      "description": "GGUF build of DeepSeek Math 7B for CPU-first quant workflows.",
+      "categories": [
+        "ml-ai",
+        "data-analytics"
+      ],
+      "capabilities": [
+        "math",
+        "analysis",
+        "reasoning"
+      ]
+    },
+    "undiopenhermes-7b": {
+      "model_name": "Undi95/UndiOpenHermes-2.5-Mistral-7B",
+      "display_name": "Undi OpenHermes 7B",
+      "max_length": 8192,
+      "quantization": "pytorch",
+      "format": "pytorch",
+      "description": "Unfiltered conversational model tuned for NSFW and roleplay.",
+      "categories": [
+        "nsfw"
+      ],
+      "capabilities": [
+        "nsfw",
+        "roleplay",
+        "conversation"
+      ]
+    },
+    "undiopenhermes-7b-gguf": {
+      "model_name": "Undi95/UndiOpenHermes-2.5-Mistral-7B",
+      "display_name": "Undi OpenHermes 7B (GGUF)",
+      "max_length": 8192,
+      "quantization": "gguf",
+      "format": "gguf",
+      "description": "GGUF conversion of Undi OpenHermes 7B for NSFW CPU inference.",
+      "categories": [
+        "nsfw"
+      ],
+      "capabilities": [
+        "nsfw",
+        "roleplay",
+        "conversation"
+      ]
+    },
+    "openhermes-7b-gptq": {
+      "model_name": "TheBloke/OpenHermes-2.5-Mistral-7B-GPTQ",
+      "display_name": "OpenHermes 2.5 (GPTQ)",
+      "max_length": 8192,
+      "quantization": "gptq",
+      "format": "pytorch",
+      "description": "Quantised GPTQ OpenHermes tuned for NSFW conversation.",
+      "categories": [
+        "nsfw"
+      ],
+      "capabilities": [
+        "nsfw",
+        "roleplay",
+        "conversation"
+      ]
+    },
+    "openhermes-7b-gptq-gguf": {
+      "model_name": "TheBloke/OpenHermes-2.5-Mistral-7B-GPTQ",
+      "display_name": "OpenHermes 2.5 (GPTQ GGUF)",
+      "max_length": 8192,
+      "quantization": "gguf",
+      "format": "gguf",
+      "description": "GGUF export of OpenHermes 2.5 GPTQ for CPU NSFW workloads.",
+      "categories": [
+        "nsfw"
+      ],
+      "capabilities": [
+        "nsfw",
+        "roleplay",
+        "conversation"
+      ]
+    },
+    "nous-hermes-7b-gptq": {
+      "model_name": "TheBloke/Nous-Hermes-2-Mistral-7B-GPTQ",
+      "display_name": "Nous Hermes 2 (GPTQ)",
+      "max_length": 8192,
+      "quantization": "gptq",
+      "format": "pytorch",
+      "description": "Uncensored Nous Hermes GPTQ variant for explicit conversations.",
+      "categories": [
+        "nsfw"
+      ],
+      "capabilities": [
+        "nsfw",
+        "roleplay",
+        "conversation"
+      ]
+    },
+    "nous-hermes-7b-gptq-gguf": {
+      "model_name": "TheBloke/Nous-Hermes-2-Mistral-7B-GPTQ",
+      "display_name": "Nous Hermes 2 (GPTQ GGUF)",
+      "max_length": 8192,
+      "quantization": "gguf",
+      "format": "gguf",
+      "description": "GGUF export of Nous Hermes GPTQ for NSFW CPU deployments.",
+      "categories": [
+        "nsfw"
+      ],
+      "capabilities": [
+        "nsfw",
+        "roleplay",
+        "conversation"
+      ]
+    },
+    "chronos-hermes-13b-gptq": {
+      "model_name": "TheBloke/Chronos-Hermes-13B-GPTQ",
+      "display_name": "Chronos Hermes 13B (GPTQ)",
+      "max_length": 16384,
+      "quantization": "gptq",
+      "format": "pytorch",
+      "description": "Larger NSFW-oriented Chronos Hermes GPTQ model.",
+      "categories": [
+        "nsfw"
+      ],
+      "capabilities": [
+        "nsfw",
+        "roleplay",
+        "conversation"
+      ]
+    },
+    "chronos-hermes-13b-gptq-gguf": {
+      "model_name": "TheBloke/Chronos-Hermes-13B-GPTQ",
+      "display_name": "Chronos Hermes 13B (GPTQ GGUF)",
+      "max_length": 16384,
+      "quantization": "gguf",
+      "format": "gguf",
+      "description": "GGUF conversion of Chronos Hermes 13B GPTQ for CPU hosting.",
+      "categories": [
+        "nsfw"
+      ],
+      "capabilities": [
+        "nsfw",
+        "roleplay",
+        "conversation"
+      ]
+    },
+    "undiplatypus2-13b-gptq": {
+      "model_name": "TheBloke/UndiPlatypus2-13B-GPTQ",
+      "display_name": "UndiPlatypus2 13B (GPTQ)",
+      "max_length": 16384,
+      "quantization": "gptq",
+      "format": "pytorch",
+      "description": "High-capacity NSFW GPTQ model for immersive roleplay.",
+      "categories": [
+        "nsfw"
+      ],
+      "capabilities": [
+        "nsfw",
+        "roleplay",
+        "conversation"
+      ]
+    },
+    "undiplatypus2-13b-gptq-gguf": {
+      "model_name": "TheBloke/UndiPlatypus2-13B-GPTQ",
+      "display_name": "UndiPlatypus2 13B (GPTQ GGUF)",
+      "max_length": 16384,
+      "quantization": "gguf",
+      "format": "gguf",
+      "description": "GGUF export of UndiPlatypus2 GPTQ for CPU workloads.",
+      "categories": [
+        "nsfw"
+      ],
+      "capabilities": [
+        "nsfw",
+        "roleplay",
+        "conversation"
+      ]
+    },
+    "openorca-platypus2-13b-gptq": {
+      "model_name": "TheBloke/OpenOrca-Platypus2-13B-GPTQ",
+      "display_name": "OpenOrca Platypus2 13B (GPTQ)",
+      "max_length": 16384,
+      "quantization": "gptq",
+      "format": "pytorch",
+      "description": "OpenOrca Platypus GPTQ tuned for unfiltered romantic dialogue.",
+      "categories": [
+        "nsfw"
+      ],
+      "capabilities": [
+        "nsfw",
+        "roleplay",
+        "conversation"
+      ]
+    },
+    "openorca-platypus2-13b-gptq-gguf": {
+      "model_name": "TheBloke/OpenOrca-Platypus2-13B-GPTQ",
+      "display_name": "OpenOrca Platypus2 13B (GPTQ GGUF)",
+      "max_length": 16384,
+      "quantization": "gguf",
+      "format": "gguf",
+      "description": "GGUF conversion of OpenOrca Platypus2 GPTQ for CPU deployment.",
+      "categories": [
+        "nsfw"
+      ],
+      "capabilities": [
+        "nsfw",
+        "roleplay",
+        "conversation"
+      ]
     }
   },
-  "default_model": "llama-3.1-8b",
-  "inference_config": {
-    "max_new_tokens": 1024,
-    "temperature": 0.7,
-    "top_p": 0.9,
-    "do_sample": true,
-    "pad_token_id": null
+  "default_model": "qwen-2.5-7b",
+  "inference_profiles": {
+    "default": {
+      "max_new_tokens": 1024,
+      "temperature": 0.7,
+      "top_p": 0.9,
+      "do_sample": true,
+      "pad_token_id": null
+    },
+    "story_mode": {
+      "max_new_tokens": 2048,
+      "temperature": 0.8,
+      "top_p": 0.95,
+      "do_sample": true,
+      "pad_token_id": null
+    }
   }
 }

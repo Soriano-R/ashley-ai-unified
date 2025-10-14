@@ -7,7 +7,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     
     // Proxy to Python microservice
-    const response = await fetch(`${PYTHON_SERVICE_URL}/api/chat`, {
+    const response = await fetch(`${PYTHON_SERVICE_URL}/api/internet`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(data);
     
   } catch (error) {
-    console.error('Chat API error:', error);
+    console.error('Internet API error:', error);
     return NextResponse.json(
       { error: 'Failed to process chat request' },
       { status: 500 }
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   try {
     // Get available models from Python service
-    const response = await fetch(`${PYTHON_SERVICE_URL}/api/chat/models`, { cache: 'no-store' });
+    const response = await fetch(`${PYTHON_SERVICE_URL}/api/internet`, { cache: 'no-store' });
     
     if (!response.ok) {
       throw new Error(`Python service error: ${response.status}`);
@@ -45,7 +45,7 @@ export async function GET() {
     return NextResponse.json(models);
     
   } catch (error) {
-    console.error('Models API error:', error);
+    console.error('Internet GET error:', error);
     return NextResponse.json(
       { error: 'Failed to get models' },
       { status: 500 }

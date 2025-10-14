@@ -1,16 +1,18 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import Sidebar from './Sidebar'
 import ChatArea from './ChatArea'
 import SignIn from './SignIn'
 import SettingsModal from './SettingsModal'
 import AdminPanel from './AdminPanel'
 import PersonaSelector from './PersonaSelector'
+import ModelSelector from './ModelSelector'
 import UserManager from './UserManager'
-import { Message, Session, User } from '@/types'
-import { DEFAULT_PERSONA, getPersonaConfig } from '@/lib/personas'
+import { Message, ModelOption, PersonaOption, Session, User } from '@/types'
+import { DEFAULT_PERSONA_ID } from '@/lib/personas'
 import { apiClient } from '@/lib/apiClient'
+
 
 /**
  * ChatInterface Component - Main container for the entire chat application
@@ -31,13 +33,16 @@ export default function ChatInterface() {
   // User manager modal state
   const [isUserManagerOpen, setIsUserManagerOpen] = useState(false)
 
+  // Chat generation/loading state
+  const [isGenerating, setIsGenerating] = useState(false)
+
   // Handler to open UserManager modal
   const handleOpenUserManager = () => setIsUserManagerOpen(true)
   const handleCloseUserManager = () => setIsUserManagerOpen(false)
   
   // State for all chat sessions - starts with one default session
   const [sessions, setSessions] = useState<Session[]>([
-    { id: '1', title: 'New Chat', messages: [] }
+    { id: '1', title: 'New Chat', messages: [], personaId: DEFAULT_PERSONA_ID, modelId: 'auto' }
   ])
   
   // State for which session is currently active/selected
@@ -49,11 +54,101 @@ export default function ChatInterface() {
   // State for sidebar collapse/expand
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
 
-  // State for current persona
-  const [currentPersona, setCurrentPersona] = useState(DEFAULT_PERSONA)
+  // Persona & model catalog state
+  const [personaOptions, setPersonaOptions] = useState<PersonaOption[]>([])
+  const [personaCategories, setPersonaCategories] = useState<Record<string, { label: string; description: string }>>({})
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([])
+  const [modelCategories, setModelCategories] = useState<Record<string, { label: string; description: string }>>({})
+  const [catalogLoaded, setCatalogLoaded] = useState(false)
+
+  const [currentPersonaId, setCurrentPersonaId] = useState(DEFAULT_PERSONA_ID)
+  const [currentModelId, setCurrentModelId] = useState('auto')
+
+  const currentPersona = useMemo(
+    () => personaOptions.find((persona) => persona.id === currentPersonaId) ?? null,
+    [personaOptions, currentPersonaId]
+  )
+
+  const allowedModelIds = useMemo(() => {
+    const allowed = currentPersona?.allowedModelIds
+    if (allowed && allowed.length > 0) {
+      return allowed
+    }
+    return ['auto']
+  }, [currentPersona])
 
   // Store timeouts for session renaming to allow cleanup
-  const [renamingTimeouts, setRenamingTimeouts] = useState<{ [sessionId: string]: NodeJS.Timeout }>({})
+  const [renamingTimeouts, setRenamingTimeouts] = useState<{ [sessionId: string]: ReturnType<typeof setTimeout> }>({})
+
+  // AbortController for in-flight chat requests
+  const chatAbortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadPersonaCatalog() {
+      try {
+        const catalog = await apiClient.getPersonas()
+        if (!isMounted) return
+
+        setPersonaOptions(catalog.personas)
+        setPersonaCategories(catalog.personaCategories || {})
+        setModelOptions(catalog.models)
+        setModelCategories(catalog.modelCategories || {})
+
+        const preferredPersona =
+          catalog.personas.find((persona) => persona.id === DEFAULT_PERSONA_ID) ?? catalog.personas[0]
+
+        if (preferredPersona) {
+          const allowed = preferredPersona.allowedModelIds?.length
+            ? preferredPersona.allowedModelIds
+            : ['auto']
+          const defaultModel =
+            preferredPersona.defaultModel && allowed.includes(preferredPersona.defaultModel)
+              ? preferredPersona.defaultModel
+              : 'auto'
+
+          setCurrentPersonaId(preferredPersona.id)
+          setCurrentModelId(defaultModel ?? 'auto')
+          setSessions([
+            {
+              id: '1',
+              title: 'New Chat',
+              messages: [],
+              personaId: preferredPersona.id,
+              modelId: defaultModel ?? 'auto',
+            },
+          ])
+          setActiveSessionId('1')
+          setMessages([])
+        } else {
+          setSessions([
+            {
+              id: '1',
+              title: 'New Chat',
+              messages: [],
+              personaId: DEFAULT_PERSONA_ID,
+              modelId: 'auto',
+            },
+          ])
+          setActiveSessionId('1')
+          setMessages([])
+        }
+      } catch (error) {
+        console.error('Failed to load persona catalog:', error)
+      } finally {
+        if (isMounted) {
+          setCatalogLoaded(true)
+        }
+      }
+    }
+
+    loadPersonaCatalog()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   // Cleanup timeouts on unmount
   useEffect(() => {
@@ -73,7 +168,9 @@ export default function ChatInterface() {
     const newSession: Session = {
       id: Date.now().toString(), // Simple ID generation using timestamp
       title: 'New Chat',
-      messages: []
+      messages: [],
+      personaId: currentPersonaId,
+      modelId: currentModelId
     }
     // Add new session to the beginning of the array
     setSessions(prev => [newSession, ...prev])
@@ -83,16 +180,93 @@ export default function ChatInterface() {
     setMessages([])
   }
 
+  const applySessionSelection = useCallback(
+    (session?: Session) => {
+      if (!session) {
+        setMessages([])
+        return
+      }
+
+      setActiveSessionId(session.id)
+      setMessages(session.messages || [])
+
+      if (session.personaId) {
+        setCurrentPersonaId(session.personaId)
+        const personaMeta =
+          personaOptions.find((persona) => persona.id === session.personaId) ?? null
+        const allowed = personaMeta?.allowedModelIds?.length ? personaMeta.allowedModelIds : ['auto']
+        const candidateModels = [
+          session.modelId,
+          personaMeta?.defaultModel,
+          currentModelId,
+          'auto',
+        ].filter((value): value is string => Boolean(value))
+        const resolvedModel =
+          candidateModels.find((modelId) => allowed.includes(modelId)) ?? 'auto'
+        setCurrentModelId(resolvedModel)
+      } else if (session.modelId) {
+        setCurrentModelId(session.modelId)
+      }
+    },
+    [personaOptions, currentModelId]
+  )
+
   /**
    * Handle selecting an existing session
    * Switches to the selected session and loads its messages
    */
   const handleSelectSession = (sessionId: string) => {
-    setActiveSessionId(sessionId)
-    // Find the session and load its messages
     const session = sessions.find(s => s.id === sessionId)
-    setMessages(session?.messages || [])
+    if (session) {
+      applySessionSelection(session)
+    } else {
+      setActiveSessionId(sessionId)
+      setMessages([])
+    }
   }
+
+  const handleRenameSession = useCallback(
+    (sessionId: string, newTitle: string) => {
+      if (!newTitle.trim()) return
+      setSessions((prev) =>
+        prev.map((session) =>
+          session.id === sessionId ? { ...session, title: newTitle.trim() } : session
+        )
+      )
+    },
+    []
+  )
+
+  const handleDeleteSession = useCallback(
+    (sessionId: string) => {
+      let fallbackSession: Session | null = null
+      let nextSession: Session | null = null
+      setSessions((prev) => {
+        const remaining = prev.filter((session) => session.id !== sessionId)
+        if (remaining.length === 0) {
+          fallbackSession = {
+            id: Date.now().toString(),
+            title: 'New Chat',
+            messages: [],
+            personaId: DEFAULT_PERSONA_ID,
+            modelId: 'auto',
+          }
+          return [fallbackSession]
+        }
+        if (sessionId === activeSessionId) {
+          nextSession = remaining[0]
+        }
+        return remaining
+      })
+      if (fallbackSession) {
+        applySessionSelection(fallbackSession)
+        setMessages([])
+      } else if (nextSession) {
+        applySessionSelection(nextSession)
+      }
+    },
+    [activeSessionId, applySessionSelection]
+  )
 
   /**
    * Handle voice response audio playback
@@ -102,101 +276,202 @@ export default function ChatInterface() {
     // TODO: Implement voice response handling (e.g., auto-play, save audio, etc.)
   }
 
-  /**
-   * Handle sending a new message
-   * Adds user message and simulates AI response
-   */
-  const handleSendMessage = (content: string) => {
-    // Create user message object
+  const handlePersonaChange = useCallback(
+    (personaId: string) => {
+      const personaMeta =
+        personaOptions.find((persona) => persona.id === personaId) ?? null
+      const allowed = personaMeta?.allowedModelIds?.length
+        ? personaMeta.allowedModelIds
+        : ['auto']
+      const fallbackModel =
+        personaMeta?.defaultModel && allowed.includes(personaMeta.defaultModel)
+          ? personaMeta.defaultModel
+          : 'auto'
+      const resolvedModel = allowed.includes(currentModelId)
+        ? currentModelId
+        : fallbackModel
+
+      setCurrentPersonaId(personaId)
+      setCurrentModelId(resolvedModel)
+
+      setSessions((prev) =>
+        prev.map((session) =>
+          session.id === activeSessionId
+            ? {
+                ...session,
+                personaId,
+                modelId:
+                  session.modelId && allowed.includes(session.modelId)
+                    ? session.modelId
+                    : resolvedModel,
+              }
+            : session
+        )
+      )
+    },
+    [activeSessionId, currentModelId, personaOptions]
+  )
+
+  const handleModelChange = useCallback(
+    (modelId: string) => {
+      const allowed = allowedModelIds
+      const resolved = allowed.includes(modelId) ? modelId : 'auto'
+      setCurrentModelId(resolved)
+      setSessions((prev) =>
+        prev.map((session) =>
+          session.id === activeSessionId ? { ...session, modelId: resolved } : session
+        )
+      )
+    },
+    [activeSessionId, allowedModelIds]
+  )
+
+  const handleSendMessage = async (content: string) => {
+    // Guard: ignore empty or whitespace-only messages
+    if (!content || !content.trim()) return
+    // Guard: avoid overlapping sends
+    if (isGenerating) return
+
+    // Cancel any in-flight request
+    if (chatAbortRef.current) {
+      chatAbortRef.current.abort()
+    }
+    const controller = new AbortController()
+    chatAbortRef.current = controller
+
+    // Build user message
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content,
-      timestamp: new Date()
+      content: content.trim(),
+      timestamp: new Date(),
+      personaId: currentPersonaId,
     }
 
-    // Add user message to current messages
-    const newMessages = [...messages, userMessage]
-    setMessages(newMessages)
+    // Optimistically add the user message
+    const pendingMessages = [...messages, userMessage]
+    setMessages(pendingMessages)
 
     // Update the session with new messages and title (if it's the first message)
-    setSessions(prev => prev.map(session => 
-      session.id === activeSessionId 
-        ? { 
-            ...session, 
-            messages: newMessages, 
-            // Keep title as "New Chat" initially - will be renamed after 1 minute
-            title: session.messages.length === 0 ? 'New Chat' : session.title 
-          }
-        : session
-    ))
+    setSessions(prev =>
+      prev.map(session =>
+        session.id === activeSessionId
+          ? {
+              ...session,
+              messages: pendingMessages,
+              title: session.messages.length === 0 ? 'New Chat' : session.title,
+              personaId: currentPersonaId,
+              modelId: currentModelId,
+            }
+          : session
+      )
+    )
 
-    // Set up smart session renaming with 1-minute delay for first message
+    // Smart title rename timer for first message
     if (messages.length === 0) {
-      // Clear any existing timeout for this session
       if (renamingTimeouts[activeSessionId]) {
         clearTimeout(renamingTimeouts[activeSessionId])
       }
-
-      // Set new timeout for smart renaming after 1 minute
       const timeoutId = setTimeout(() => {
         setSessions(prev => prev.map(session => {
           if (session.id === activeSessionId && session.messages.length > 0) {
-            // Create a smart title based on conversation context
             const firstMessage = session.messages[0]?.content || content
-            const smartTitle = firstMessage.length > 30 
+            const smartTitle = firstMessage.length > 30
               ? firstMessage.slice(0, 30) + '...'
               : firstMessage
-            
             return { ...session, title: smartTitle }
           }
           return session
         }))
-
-        // Clean up timeout reference
         setRenamingTimeouts(prev => {
-          const newTimeouts = { ...prev }
-          delete newTimeouts[activeSessionId]
-          return newTimeouts
+          const next = { ...prev }
+          delete next[activeSessionId]
+          return next
         })
-      }, 60000) // 1 minute delay
-
-      // Store timeout reference for cleanup
-      setRenamingTimeouts(prev => ({
-        ...prev,
-        [activeSessionId]: timeoutId
-      }))
+      }, 60000)
+      setRenamingTimeouts(prev => ({ ...prev, [activeSessionId]: timeoutId }))
     }
 
-    // Simulate AI response after 1 second delay
-    setTimeout(() => {
-      // Enhanced AI responses based on user role with clear demo messaging
-      let aiResponse = 'This is a demo response from Ashley AI. In the production version, I would connect to the Python backend with advanced AI capabilities including memory, voice features, and multi-modal support.'
-      
-      if (currentUser?.role === 'admin') {
-        aiResponse = `🔧 **Admin Response**: I can assist you with system management, user administration, analytics, and advanced features. Your query: "${content}"\n\n*Note: This is a demo response. The production version will include real admin tools, user management, and system monitoring capabilities.*`
-      } else if (currentUser?.role === 'user') {
-        aiResponse = `💬 **Ashley AI Response**: I'm here to help with your questions and tasks. You asked: "${content}"\n\n*Note: This is a demo response. The production version will include advanced AI capabilities, memory of our conversations, voice features, and seamless integration with various tools.*`
-      }
-      
+    // Call backend
+    setIsGenerating(true)
+    try {
+      const outgoing = pendingMessages.map(m => ({ role: m.role, content: m.content }))
+      const response = await apiClient.sendMessage(
+        {
+          messages: outgoing,
+          persona: currentPersonaId,
+          modelId: currentModelId,
+        },
+        controller.signal
+      )
+
+      const data = response as any
+      const assistantText: string =
+        typeof data?.message === 'string'
+          ? data.message
+          : Array.isArray(data?.messages) && typeof data.messages.at(-1)?.content === 'string'
+            ? data.messages.at(-1).content
+            : 'I received your message, but the server returned an unexpected format.'
+
+      const responseMessages =
+        Array.isArray(data?.messages) && data.messages.length > 0
+          ? data.messages
+          : [...outgoing, { role: 'assistant', content: assistantText }]
+
+      const indexedBase = Date.now()
       const aiMessage: Message = {
-        id: (Date.now() + 1).toString(), // Ensure unique ID
+        id: (indexedBase + 1).toString(),
         role: 'assistant',
-        content: aiResponse,
-        timestamp: new Date()
+        content: assistantText,
+        timestamp: new Date(),
+        personaId: currentPersonaId,
       }
-      
-      // Add AI response to messages
-      const finalMessages = [...newMessages, aiMessage]
+
+      const finalMessages: Message[] = responseMessages.map((msg: { role: string; content: string }, index: number) => ({
+        id: `${indexedBase}-${index}`,
+        role: msg.role as Message['role'],
+        content: msg.content,
+        timestamp: new Date(),
+        personaId: currentPersonaId,
+      }))
+
+      // Ensure assistant message appended if backend omitted
+      if (!responseMessages.some((msg: { role: string }) => msg.role === 'assistant')) {
+        finalMessages.push(aiMessage)
+      }
+
       setMessages(finalMessages)
-      
-      // Update session with AI response
-      setSessions(prev => prev.map(session => 
-        session.id === activeSessionId 
-          ? { ...session, messages: finalMessages }
+      setSessions(prev => prev.map(session =>
+        session.id === activeSessionId
+          ? { ...session, messages: finalMessages, personaId: currentPersonaId, modelId: currentModelId }
           : session
       ))
-    }, 1000)
+    } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        // Silently ignore aborted requests
+      } else {
+        const errorMessage: Message = {
+          id: (Date.now() + 2).toString(),
+          role: 'assistant',
+          content: `Sorry, I couldn’t reach the chat service. ${err?.message ? 'Details: ' + err.message : ''}`,
+          timestamp: new Date(),
+          personaId: currentPersonaId,
+        }
+        const finalMessages = [...pendingMessages, errorMessage]
+        setMessages(finalMessages)
+        setSessions(prev => prev.map(session =>
+          session.id === activeSessionId
+            ? { ...session, messages: finalMessages, personaId: currentPersonaId, modelId: currentModelId }
+            : session
+        ))
+      }
+    } finally {
+      // Clear controller if it's still ours
+      if (chatAbortRef.current === controller) {
+        chatAbortRef.current = null
+      }
+      setIsGenerating(false)
+    }
   }
 
   /**
@@ -208,17 +483,49 @@ export default function ChatInterface() {
 
   /**
    * Handle user sign in
-   * Simulates authentication process with role-based access
+   * Tries real auth via /api/auth then falls back to demo accounts
    */
   const handleSignIn = async (email: string, password: string) => {
     setIsLoading(true)
-    console.log('ChatInterface received sign in attempt:', { email, password })
-    
+    try {
+      // Attempt real auth via Next.js API proxy
+      const res = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password })
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        const user: User = data?.user ?? {
+          id: data?.id || '1',
+          email,
+          name: data?.name || email.split('@')[0],
+          role: (data?.role as User['role']) || 'user',
+          createdAt: new Date()
+        }
+        setCurrentUser(user)
+        setIsAuthenticated(true)
+        setSessions([{
+          id: '1',
+          title: 'New Chat',
+          messages: [],
+          personaId: currentPersonaId,
+          modelId: currentModelId,
+        }])
+        return
+      }
+      // If not OK, fall through to demo users
+    } catch {
+      // Network or parsing error — fall back to demo
+    }
+
+    // Demo fallback accounts
     try {
       // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1500))
-      
-      // Demo user accounts with different roles
+      await new Promise(resolve => setTimeout(resolve, 800))
+
       const demoUsers: { [key: string]: { password: string; user: User } } = {
         'admin@ashley.ai': {
           password: 'admin123',
@@ -241,38 +548,43 @@ export default function ChatInterface() {
           }
         }
       }
-      
-      console.log('Available users:', Object.keys(demoUsers))
-      console.log('Looking for user:', email.toLowerCase())
-      
-      // Check if user exists and password matches
-      const userAccount = demoUsers[email.toLowerCase()]
-      console.log('Found user account:', userAccount ? 'Yes' : 'No')
-      
-      if (userAccount && userAccount.password === password) {
-        console.log('Password match successful')
-        setCurrentUser(userAccount.user)
+
+      const account = demoUsers[email.toLowerCase()]
+      if (account && account.password === password) {
+        setCurrentUser(account.user)
         setIsAuthenticated(true)
-        console.log(`User signed in as ${userAccount.user.role}:`, userAccount.user)
-        
-        // Set different default sessions based on role
-        if (userAccount.user.role === 'admin') {
+        if (account.user.role === 'admin') {
           setSessions([
-            { id: '1', title: 'Admin Dashboard', messages: [] },
-            { id: '2', title: 'System Management', messages: [] }
+            {
+              id: '1',
+              title: 'Admin Dashboard',
+              messages: [],
+              personaId: currentPersonaId,
+              modelId: currentModelId,
+            },
+            {
+              id: '2',
+              title: 'System Management',
+              messages: [],
+              personaId: currentPersonaId,
+              modelId: currentModelId,
+            }
           ])
         } else {
-          setSessions([
-            { id: '1', title: 'New Chat', messages: [] }
-          ])
+          setSessions([{
+            id: '1',
+            title: 'New Chat',
+            messages: [],
+            personaId: currentPersonaId,
+            modelId: currentModelId,
+          }])
         }
-      } else {
-        console.log('Authentication failed - invalid credentials')
-        throw new Error('Invalid email or password')
+        return
       }
+      throw new Error('Invalid email or password')
     } catch (error) {
       console.error('Sign in failed:', error)
-      alert(`Sign in failed: ${error instanceof Error ? error.message : 'Unknown error'}. Please try: admin@ashley.ai / admin123 or user@ashley.ai / user123`)
+      alert(`Sign in failed: ${error instanceof Error ? error.message : 'Unknown error'}. Try: admin@ashley.ai / admin123 or user@ashley.ai / user123`)
     } finally {
       setIsLoading(false)
     }
@@ -282,10 +594,23 @@ export default function ChatInterface() {
    * Handle user sign out
    */
   const handleSignOut = () => {
+    // Abort any in-flight chat request
+    if (chatAbortRef.current) {
+      chatAbortRef.current.abort()
+      chatAbortRef.current = null
+    }
     setIsAuthenticated(false)
     setCurrentUser(null)
     // Reset all state when signing out
-    setSessions([{ id: '1', title: 'New Chat', messages: [] }])
+    setCurrentPersonaId(DEFAULT_PERSONA_ID)
+    setCurrentModelId('auto')
+    setSessions([{
+      id: '1',
+      title: 'New Chat',
+      messages: [],
+      personaId: DEFAULT_PERSONA_ID,
+      modelId: 'auto',
+    }])
     setActiveSessionId('1')
     setMessages([])
     setIsSidebarCollapsed(false)
@@ -305,6 +630,8 @@ export default function ChatInterface() {
         activeSessionId={activeSessionId}
         onNewChat={handleNewChat}
         onSelectSession={handleSelectSession}
+        onRenameSession={handleRenameSession}
+        onDeleteSession={handleDeleteSession}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={handleToggleSidebar}
         onSignOut={handleSignOut}
@@ -319,10 +646,27 @@ export default function ChatInterface() {
         {/* Header with persona selector */}
         <div className="flex items-center justify-between p-4 border-b border-gray-700 bg-gray-800">
           <h1 className="text-xl font-semibold text-white">Ashley AI</h1>
-          <PersonaSelector 
-            currentPersona={currentPersona}
-            onPersonaChange={setCurrentPersona}
-          />
+          <div className="flex items-center gap-3">
+            {catalogLoaded && personaOptions.length > 0 ? (
+              <>
+                <PersonaSelector
+                  personas={personaOptions}
+                  categories={personaCategories}
+                  currentPersonaId={currentPersonaId}
+                  onPersonaChange={handlePersonaChange}
+                />
+                <ModelSelector
+                  models={modelOptions}
+                  categories={modelCategories}
+                  allowedModelIds={allowedModelIds}
+                  selectedModelId={currentModelId}
+                  onModelChange={handleModelChange}
+                />
+              </>
+            ) : (
+              <span className="text-sm text-gray-400">Loading personas...</span>
+            )}
+          </div>
         </div>
 
         {/* Chat area */}
@@ -330,8 +674,8 @@ export default function ChatInterface() {
           <ChatArea 
             messages={messages}
             onSendMessage={handleSendMessage}
-            isLoading={false} // TODO: Add actual loading state when connecting to backend
-            persona={currentPersona}
+            isLoading={isGenerating}
+            persona={currentPersonaId}
             onVoiceResponse={handleVoiceResponse}
           />
         </div>

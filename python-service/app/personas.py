@@ -1,55 +1,48 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Iterable, List
 
-from app.config import get_settings
-
-
-def _persona_dir() -> Path:
-    settings = get_settings()
-    return settings.persona_dir
-
-
-def list_personas(search_dirs: Optional[Iterable[Path]] = None) -> List[str]:
-    directories = list(search_dirs or [_persona_dir()])
-    names: set[str] = set()
-    for directory in directories:
-        path = Path(directory)
-        if not path.exists():
-            continue
-        for file in path.iterdir():
-            if file.suffix.lower() in {".txt", ".md"}:
-                names.add(file.stem)
-    return sorted(names)
-
-
-def load_persona(name: str, search_dirs: Optional[Iterable[Path]] = None) -> str:
-    directories = list(search_dirs or [_persona_dir()])
-    for directory in directories:
-        for suffix in (".txt", ".md"):
-            candidate = Path(directory) / f"{name}{suffix}"
-            if candidate.exists():
-                return candidate.read_text(encoding="utf-8")
-    raise FileNotFoundError(f"Persona '{name}' not found in {directories}")
+from app.persona_registry import (
+    PERSONA_REGISTRY,
+    persona_metadata_dict,
+    persona_files,
+)
 
 
 ASHLEY_HEADER = (
     "You are Ashley — warm, affectionate, technically sharp when needed. "
-    "Keep responses grounded, emotionally intelligent, and avoid robotic tone."\
-    "\nIf asked for Hybrid/Expert modes, adapt tone accordingly."
+    "Keep responses grounded, emotionally intelligent, and avoid robotic tone."
+    "\nIf asked for professional personas, adapt expertise accordingly."
 )
 
 
+def list_personas() -> List[str]:
+    """Return available persona identifiers."""
+    return sorted(PERSONA_REGISTRY.keys())
+
+
+def persona_details() -> List[dict]:
+    """Return serialisable persona metadata for API responses."""
+    return [persona_metadata_dict(meta) for meta in PERSONA_REGISTRY.values()]
+
+
 def load_persona_bundle(names: Iterable[str]) -> str:
+    """Load and concatenate persona prompt files for the requested personas."""
     bundle = [ASHLEY_HEADER, ""]
-    for persona_name in names:
-        try:
-            content = load_persona(persona_name)
-        except FileNotFoundError:
-            content = "(Persona not found)"
-        bundle.append(f"# Persona: {persona_name}\n{content.strip()}\n")
+    for persona_id in names:
+        meta = PERSONA_REGISTRY.get(persona_id)
+        if not meta:
+            bundle.append(f"# Persona: {persona_id}\n(Persona not found)\n")
+            continue
+        persona_content = []
+        for file_path in persona_files(persona_id):
+            try:
+                persona_content.append(Path(file_path).read_text(encoding="utf-8").strip())
+            except FileNotFoundError:
+                persona_content.append(f"(Persona prompt file missing: {file_path})")
+        bundle.append(f"# Persona: {meta.label}\n" + "\n\n".join(persona_content) + "\n")
     return "\n".join(bundle).strip()
 
 
-__all__ = ["list_personas", "load_persona", "load_persona_bundle", "ASHLEY_HEADER"]
+__all__ = ["list_personas", "persona_details", "load_persona_bundle", "ASHLEY_HEADER"]

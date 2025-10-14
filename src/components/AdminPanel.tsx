@@ -123,6 +123,15 @@ export default function AdminPanel({ isOpen, onClose, user }: AdminPanelProps) {
     setAdminSettings(prev => {
       const categoryData = prev[category as keyof typeof prev]
       if (typeof categoryData === 'object' && categoryData !== null && !Array.isArray(categoryData)) {
+        if (!subCategory) {
+          return {
+            ...prev,
+            [category]: {
+              ...categoryData,
+              [key]: value
+            }
+          }
+        }
         const subCategoryData = (categoryData as Record<string, unknown>)[subCategory]
         return {
           ...prev,

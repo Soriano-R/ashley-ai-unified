@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from '../lib/apiClient'
-import { PERSONA_LIST, getPersonaConfig } from '../lib/personas'
+import { getPersonaIcon, getPersonaImageStyleDescription } from '../lib/personas'
 
 async function testPersonaIntegration() {
   console.log('🧪 Testing Persona Integration System...\n')
@@ -17,20 +17,26 @@ async function testPersonaIntegration() {
 
     // Test 2: Get available personas
     console.log('\n2. Testing persona configurations...')
-    console.log('📋 Available personas:', PERSONA_LIST)
+    const catalog = await apiClient.getPersonas()
+    const personaList = catalog.personas
+
+    console.log('📋 Available personas:', personaList.map(persona => persona.id))
     
-    PERSONA_LIST.forEach(personaId => {
-      const config = getPersonaConfig(personaId)
-      console.log(`   ${config.ui.icon} ${config.name}: ${config.shortDescription}`)
-      console.log(`     Voice: ${config.voicePreference}`)
-      console.log(`     Style: ${config.imageStyle.style_keywords.slice(0, 3).join(', ')}`)
+    personaList.forEach(persona => {
+      const icon = getPersonaIcon(persona.id)
+      const styleDescription = getPersonaImageStyleDescription(persona.id)
+      console.log(`   ${icon} ${persona.label}: ${persona.description}`)
+      console.log(`     Default model: ${persona.defaultModel}`)
+      console.log(`     Allowed models: ${(persona.allowedModelIds ?? []).join(', ')}`)
+      console.log(`     Image style: ${styleDescription}`)
     })
 
     // Test 3: Voice synthesis with different personas
     console.log('\n3. Testing persona-aware voice synthesis...')
     const testText = "Hello! I'm here to help you with your tasks today."
     
-    for (const personaId of PERSONA_LIST.slice(0, 3)) { // Test first 3 personas
+    for (const persona of personaList.slice(0, 3)) { // Test first 3 personas
+      const personaId = persona.id
       console.log(`   Testing ${personaId} persona...`)
       try {
         const voiceResponse = await apiClient.synthesizeSpeech({
@@ -48,7 +54,8 @@ async function testPersonaIntegration() {
     console.log('\n4. Testing persona-aware image generation...')
     const testPrompt = "A beautiful landscape with mountains and a lake"
     
-    for (const personaId of PERSONA_LIST.slice(0, 2)) { // Test first 2 personas
+    for (const persona of personaList.slice(0, 2)) { // Test first 2 personas
+      const personaId = persona.id
       console.log(`   Testing ${personaId} persona...`)
       try {
         const imageResponse = await apiClient.generateImage({

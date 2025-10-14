@@ -13,6 +13,8 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      cache: 'no-store',
+      credentials: 'include'
     });
     
     if (!response.ok) {
@@ -24,9 +26,15 @@ export async function POST(request: NextRequest) {
     
     const authData = await response.json();
     
+    if (!authData?.token) {
+      return NextResponse.json(
+        { error: 'No token returned from auth service' },
+        { status: 500 }
+      )
+    }
     // Set HTTP-only cookie for session management
     const responseObj = NextResponse.json(authData);
-    responseObj.cookies.set('session', authData.token || 'demo-session', {
+    responseObj.cookies.set('session', authData.token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',

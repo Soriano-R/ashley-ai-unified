@@ -1,36 +1,50 @@
 from pathlib import Path
-from typing import List, Optional
+from typing import Iterable, List, Optional, Sequence, Union
 
-DEFAULT_DIRS = ["personalities", "knowledge", "prompts"]
+from app.config import get_settings
 
 
-def find_persona_path(name: str, search_dirs: Optional[List[str]] = None) -> Path:
-    exts = [".txt", ".md"]
-    dirs = search_dirs or DEFAULT_DIRS
-    for d in dirs:
+PersonaDirArg = Optional[Sequence[Union[str, Path]]]
+
+
+def _candidate_dirs(search_dirs: PersonaDirArg = None) -> List[Path]:
+    """
+    Resolve the directories that should be searched for persona prompt files.
+
+    If `search_dirs` is provided, it is taken as authoritative. Otherwise we fall
+    back to the configured persona directory under python-service/personas.
+    """
+    if search_dirs:
+        return [Path(d).expanduser().resolve() for d in search_dirs]
+    settings = get_settings()
+    return [settings.persona_dir]
+
+
+def find_persona_path(name: str, search_dirs: PersonaDirArg = None) -> Path:
+    exts = (".txt", ".md")
+    for directory in _candidate_dirs(search_dirs):
         for ext in exts:
-            p = Path(d) / f"{name}{ext}"
-            if p.exists():
-                return p
+            candidate = directory / f"{name}{ext}"
+            if candidate.exists():
+                return candidate
     raise FileNotFoundError(
-        f"Persona '{name}' not found. Looked in {dirs} for {name}.txt/.md."
+        f"Persona '{name}' not found. Looked in {[str(d) for d in _candidate_dirs(search_dirs)]}."
     )
 
 
-def load_persona(name: str, search_dirs: Optional[List[str]] = None) -> str:
-    p = find_persona_path(name, search_dirs)
-    return p.read_text(encoding="utf-8")
+def load_persona(name: str, search_dirs: PersonaDirArg = None) -> str:
+    persona_path = find_persona_path(name, search_dirs)
+    return persona_path.read_text(encoding="utf-8")
 
 
-def list_personas(search_dirs: Optional[List[str]] = None) -> List[str]:
-    dirs = search_dirs or DEFAULT_DIRS
+def list_personas(search_dirs: PersonaDirArg = None) -> List[str]:
     names = set()
-    for d in dirs:
-        pd = Path(d)
-        if pd.exists():
-            for f in pd.iterdir():
-                if f.suffix.lower() in {".txt", ".md"}:
-                    names.add(f.stem)
+    for directory in _candidate_dirs(search_dirs):
+        if not directory.exists():
+            continue
+        for file in directory.iterdir():
+            if file.is_file() and file.suffix.lower() in {".txt", ".md"}:
+                names.add(file.stem)
     return sorted(names)
 
 
@@ -39,19 +53,19 @@ ASHLEY_HEADER = (
     "Keep it real, keep it close; technical when needed, never robotic.\n\n"
 )
 
-def load_persona_bundle(names):
+
+def load_persona_bundle(names: Union[str, Iterable[str]]) -> str:
     """
     Load one or more personas and return a single string with the Ashley header on top.
-    - names: str or list[str]
     """
     if isinstance(names, str):
         names = [names]
 
     bundle = ASHLEY_HEADER
-    for n in names:
+    for persona_name in names:
         try:
-            bundle += f"# {n}\n" + load_persona(n) + "\n\n"
+            bundle += f"# {persona_name}\n" + load_persona(persona_name) + "\n\n"
         except FileNotFoundError:
-            bundle += f"# {n}\n(Persona not found)\n\n"
+            bundle += f"# {persona_name}\n(Persona not found)\n\n"
 
     return bundle.strip()
