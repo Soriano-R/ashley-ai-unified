@@ -3,20 +3,20 @@ Enhanced Chat Engine for Ashley AI
 Integrates PyTorch models with internet access and persona management
 """
 
-import os
+import asyncio
 import logging
-from typing import Dict, List, Optional, Union, Any
+import os
 from datetime import datetime
-import json
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
-# Local imports
-from core.pytorch_manager import get_pytorch_manager
-from tools.internet_access import get_internet_manager
-from app.personas import load_persona_bundle
 from app.persona_registry import (
     PERSONA_REGISTRY,
     resolve_allowed_model_ids,
 )
+from app.personas import load_persona_bundle
+from core.pytorch_manager import get_pytorch_manager
+from tools.internet_access import get_internet_manager
 
 logger = logging.getLogger(__name__)
 
@@ -171,7 +171,7 @@ Be helpful, engaging, and maintain the personality characteristics of {persona_l
         
         return "\n".join(prompt_parts)
     
-    def generate_response(
+    async def generate_response(
         self,
         message: str,
         persona_name: Optional[str] = None,
@@ -207,7 +207,9 @@ Be helpful, engaging, and maintain the personality characteristics of {persona_l
                     None,
                 )
         if not persona_meta:
-            persona_meta = PERSONA_REGISTRY.get(self.current_persona) or next(iter(PERSONA_REGISTRY.values()))
+            persona_meta = PERSONA_REGISTRY.get(self.current_persona)
+        if not persona_meta:
+            persona_meta = next(iter(PERSONA_REGISTRY.values()))
 
         persona_id = persona_meta.id
         persona_label = persona_meta.label
@@ -219,7 +221,11 @@ Be helpful, engaging, and maintain the personality characteristics of {persona_l
         if use_internet is None:
             use_internet = self._detect_internet_need(message)
 
-        selected_model_id, allowed_models = self._resolve_model_selection(persona_meta, model_id)
+        selected_model_id, allowed_models = await asyncio.to_thread(
+            self._resolve_model_selection,
+            persona_meta,
+            model_id,
+        )
 
         response_data = {
             "response": "",
@@ -236,7 +242,8 @@ Be helpful, engaging, and maintain the personality characteristics of {persona_l
         try:
             # Load target model (if any)
             if selected_model_id:
-                if not self.pytorch_manager.load_model(selected_model_id):
+                loaded = await asyncio.to_thread(self.pytorch_manager.load_model, selected_model_id)
+                if not loaded:
                     response_data["error"] = f"Failed to load model {selected_model_id}"
                     response_data["model_used"] = selected_model_id
                     response_data["response"] = self._generate_fallback_response(message, persona_meta)
@@ -246,8 +253,11 @@ Be helpful, engaging, and maintain the personality characteristics of {persona_l
             internet_results = None
             if use_internet:
                 try:
-                    internet_results = self.internet_manager.comprehensive_search(message)
-                    response_data["sources"] = internet_results.get("sources_used", [])
+                    internet_results = await asyncio.to_thread(
+                        self.internet_manager.comprehensive_search,
+                        message,
+                    )
+                    response_data["sources"] = self._extract_sources(internet_results)
                 except Exception as e:
                     logger.warning(f"Internet search failed: {e}")
                     # Continue without internet
@@ -264,9 +274,10 @@ Be helpful, engaging, and maintain the personality characteristics of {persona_l
             # Generate response using PyTorch or OpenAI API model
             if self.pytorch_manager.current_model:
                 try:
-                    response_text = self.pytorch_manager.generate_response(
+                    response_text = await asyncio.to_thread(
+                        self.pytorch_manager.generate_response,
                         enhanced_prompt,
-                        **generation_kwargs
+                        **generation_kwargs,
                     )
                     response_data["response"] = response_text
                     response_data["model_used"] = selected_model_id or "pytorch"
@@ -280,12 +291,13 @@ Be helpful, engaging, and maintain the personality characteristics of {persona_l
                 try:
                     import openai
                     openai.api_key = os.getenv('OPENAI_API_KEY')
-                    completion = openai.ChatCompletion.create(
+                    completion = await asyncio.to_thread(
+                        openai.ChatCompletion.create,
                         model=self.pytorch_manager.models['openai']['config']['model_name'],
                         messages=[{"role": "user", "content": enhanced_prompt}],
                         max_tokens=generation_kwargs.get('max_new_tokens', 1024),
                         temperature=generation_kwargs.get('temperature', 0.7),
-                        top_p=generation_kwargs.get('top_p', 0.9)
+                        top_p=generation_kwargs.get('top_p', 0.9),
                     )
                     response_text = completion.choices[0].message['content']
                     response_data["response"] = response_text
@@ -391,13 +403,41 @@ Be helpful, engaging, and maintain the personality characteristics of {persona_l
         self.context_history = []
         logger.info("Context history cleared")
     
-    def search_internet(self, query: str) -> Dict[str, Any]:
+    async def search_internet(self, query: str) -> Dict[str, Any]:
         """Manually trigger internet search"""
         try:
-            return self.internet_manager.comprehensive_search(query)
+            return await asyncio.to_thread(self.internet_manager.comprehensive_search, query)
         except Exception as e:
             logger.error(f"Manual internet search failed: {e}")
             return {'error': str(e)}
+    
+    @staticmethod
+    def _extract_sources(search_results: Optional[Dict[str, Any]]) -> List[str]:
+        """Extract and deduplicate valid HTTP(S) URLs from search results."""
+        if not search_results:
+            return []
+
+        sources: List[str] = []
+        seen = set()
+
+        for _, entries in (search_results.get("results") or {}).items():
+            for entry in entries or []:
+                url = entry.get("url")
+                if not isinstance(url, str):
+                    continue
+                parsed = urlparse(url)
+                if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                    continue
+                if url not in seen:
+                    seen.add(url)
+                    sources.append(url)
+
+        for source in search_results.get("sources_used", []):
+            if isinstance(source, str) and source not in seen:
+                seen.add(source)
+                sources.append(source)
+
+        return sources
     
     def get_available_models(self) -> List[Dict]:
         """Get list of available PyTorch models"""

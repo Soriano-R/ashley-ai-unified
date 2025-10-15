@@ -88,11 +88,15 @@ async def test_enhanced_chat():
         # Test basic chat
         response = await engine.generate_response(
             message="Hello! Tell me about yourself.",
-            session_id="test_session",
-            persona="Ashley"
+            persona_name="ashley-girlfriend",
         )
-        
-        print(f"✅ Enhanced chat response: {response[:100]}...")
+
+        if isinstance(response, dict):
+            preview = response.get("response", "")
+        else:
+            preview = str(response)
+
+        print(f"✅ Enhanced chat response: {preview[:100]}...")
         
     except ImportError as e:
         print(f"❌ Enhanced chat dependencies not available: {e}")

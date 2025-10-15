@@ -261,13 +261,12 @@ async def proxy_chat(request: EnhancedChatRequest):
         history, user_message = _resolve_history_and_message(request)
 
         chat_engine = get_enhanced_chat_engine()
-        result = await asyncio.to_thread(
-            chat_engine.generate_response,
-            user_message,
-            request.persona,
-            request.use_internet,
-            request.model_id,
-            history,
+        result = await chat_engine.generate_response(
+            message=user_message,
+            persona_name=request.persona,
+            use_internet=request.use_internet,
+            model_id=request.model_id,
+            history=history,
             max_new_tokens=request.max_new_tokens,
             temperature=request.temperature,
             top_p=request.top_p,
