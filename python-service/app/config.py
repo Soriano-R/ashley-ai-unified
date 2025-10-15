@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from dotenv import load_dotenv
+from enum import Enum
 from pydantic import BaseModel, BaseSettings, Field, validator, root_validator
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -31,6 +32,22 @@ def _bool_env(name: str, default: bool = False) -> bool:
     return default
 
 
+class ModerationAction(str, Enum):
+    ALLOW = "allow"
+    BLOCK = "block"
+    FLAG = "flag"
+
+    @classmethod
+    def from_value(cls, value: str) -> "ModerationAction":
+        normalised = value.strip().lower()
+        if normalised == "monitor":
+            normalised = "flag"
+        try:
+            return cls(normalised)
+        except ValueError as exc:
+            raise ValueError(f"Unsupported moderation action '{value}'. Expected one of: {', '.join(a.value for a in cls)}") from exc
+
+
 class RateLimitConfig(BaseModel):
     requests_per_minute: int = Field(60, ge=1)
     cooldown_seconds: int = Field(5, ge=0)
@@ -40,27 +57,43 @@ class RateLimitConfig(BaseModel):
 
 
 class ModerationPolicy(BaseModel):
-    default_action: str = "monitor"
-    categories: Dict[str, str] = Field(
+    default_action: ModerationAction = ModerationAction.FLAG
+    categories: Dict[str, ModerationAction] = Field(
         default_factory=lambda: {
-            "sexual": "monitor",
-            "violence": "monitor",
-            "hate": "block",
-            "self-harm": "monitor",
-            "harassment": "monitor",
-            "self-harm_instructions": "block",
-            "hate_threatening": "block",
-            "self-harm_intent": "block",
-            "sexual_minors": "block",
-            "violence_graphic": "monitor",
-            "malware": "block",
-            "political": "allow",
-            "medical": "monitor",
+            "sexual": ModerationAction.FLAG,
+            "violence": ModerationAction.FLAG,
+            "hate": ModerationAction.BLOCK,
+            "self-harm": ModerationAction.FLAG,
+            "harassment": ModerationAction.FLAG,
+            "self-harm_instructions": ModerationAction.BLOCK,
+            "hate_threatening": ModerationAction.BLOCK,
+            "self-harm_intent": ModerationAction.BLOCK,
+            "sexual_minors": ModerationAction.BLOCK,
+            "violence_graphic": ModerationAction.FLAG,
+            "malware": ModerationAction.BLOCK,
+            "political": ModerationAction.ALLOW,
+            "medical": ModerationAction.FLAG,
         }
     )
 
     class Config:
         frozen = True
+
+    @validator("categories", pre=True)
+    def _coerce_category_actions(cls, value: Dict[str, object]) -> Dict[str, ModerationAction]:
+        coerced: Dict[str, ModerationAction] = {}
+        for category, action in (value or {}).items():
+            if isinstance(action, ModerationAction):
+                coerced[category] = action
+            else:
+                coerced[category] = ModerationAction.from_value(str(action))
+        return coerced
+
+    @validator("default_action", pre=True)
+    def _coerce_default_action(cls, value: object) -> ModerationAction:
+        if isinstance(value, ModerationAction):
+            return value
+        return ModerationAction.from_value(str(value))
 
 
 class FeatureFlags(BaseModel):
@@ -103,7 +136,8 @@ class Settings(BaseSettings):
     serpapi_api_key: Optional[str] = Field(default=None, env="SERPAPI_API_KEY")
 
     class Config:
-        env_file = str(ENV_PATH) if ENV_PATH.exists() else None
+        files = [str(path) for path in (ENV_PATH, HF_ENV_PATH) if path.exists()]
+        env_file = files or None
         env_file_encoding = "utf-8"
         case_sensitive = False
 
@@ -167,4 +201,11 @@ def get_settings() -> Settings:
     return Settings()
 
 
-__all__ = ["Settings", "FeatureFlags", "RateLimitConfig", "ModerationPolicy", "get_settings"]
+__all__ = [
+    "Settings",
+    "FeatureFlags",
+    "RateLimitConfig",
+    "ModerationPolicy",
+    "ModerationAction",
+    "get_settings",
+]

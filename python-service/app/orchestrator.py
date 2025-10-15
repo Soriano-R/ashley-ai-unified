@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, Generator, List, Optional
 
-from app.config import get_settings
+from app.config import ModerationAction, get_settings
 from app.moderation import ModerationResult, evaluate_text, get_moderation_controller
 from app.personas import load_persona_bundle
 from app.router import RoutingContext, select_model
@@ -150,9 +150,9 @@ class ChatOrchestrator:
 
     def _handle_moderation(self, state: ChatState, user_text: str) -> ModerationResult:
         if not state.moderation_enabled:
-            return ModerationResult("allow", False, {}, {})
+            return ModerationResult(ModerationAction.ALLOW, False, {}, {})
         result = evaluate_text(state.session_id, user_text)
-        if result.action == "block":
+        if result.action == ModerationAction.BLOCK:
             raise ModerationError(result)
         return result
 
@@ -262,7 +262,7 @@ class ChatOrchestrator:
             state.last_error = None
             return {
                 "model": model_choice.model,
-                "moderation": moderation_result.action,
+                "moderation": moderation_result.action.value,
                 "tools": model_choice.tools,
                 "usage": {
                     "prompt_tokens": usage.prompt_tokens,
