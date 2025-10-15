@@ -4,15 +4,16 @@ Test script for Ashley AI Enhanced Features
 Verifies PyTorch and Internet access functionality
 """
 
+import logging
 import sys
 import asyncio
-import logging
 from pathlib import Path
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent))
+from app.logging import configure_logging
 
-logging.basicConfig(level=logging.INFO)
+configure_logging()
 logger = logging.getLogger(__name__)
 
 async def test_pytorch_manager():

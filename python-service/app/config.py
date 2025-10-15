@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Optional
 
 from dotenv import load_dotenv
+from pydantic import BaseModel, BaseSettings, Field, validator, root_validator
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 ENV_PATH = ROOT_DIR / ".env"
@@ -19,42 +19,29 @@ for path in (ENV_PATH, HF_ENV_PATH):
 load_dotenv()  # fallback to default search in case nothing matched above
 
 
-_DEF_BOOL_TRUE = {"1", "true", "yes", "on", "enable", "enabled"}
-_DEF_BOOL_FALSE = {"0", "false", "no", "off", "disable", "disabled"}
-
-
 def _bool_env(name: str, default: bool = False) -> bool:
     val = os.getenv(name)
     if val is None:
         return default
     lowered = val.strip().lower()
-    if lowered in _DEF_BOOL_TRUE:
+    if lowered in {"1", "true", "yes", "on", "enable", "enabled"}:
         return True
-    if lowered in _DEF_BOOL_FALSE:
+    if lowered in {"0", "false", "no", "off", "disable", "disabled"}:
         return False
     return default
 
 
-def _int_env(name: str, default: int) -> int:
-    val = os.getenv(name)
-    if val is None:
-        return default
-    try:
-        return int(val)
-    except ValueError:
-        return default
+class RateLimitConfig(BaseModel):
+    requests_per_minute: int = Field(60, ge=1)
+    cooldown_seconds: int = Field(5, ge=0)
+
+    class Config:
+        frozen = True
 
 
-@dataclass(frozen=True)
-class RateLimitConfig:
-    requests_per_minute: int = 60
-    cooldown_seconds: int = 5
-
-
-@dataclass(frozen=True)
-class ModerationPolicy:
+class ModerationPolicy(BaseModel):
     default_action: str = "monitor"
-    categories: Dict[str, str] = field(
+    categories: Dict[str, str] = Field(
         default_factory=lambda: {
             "sexual": "monitor",
             "violence": "monitor",
@@ -72,10 +59,12 @@ class ModerationPolicy:
         }
     )
 
+    class Config:
+        frozen = True
 
-@dataclass(frozen=True)
-class FeatureFlags:
-    enable_voice: bool = False
+
+class FeatureFlags(BaseModel):
+    enable_voice: bool = True
     enable_search: bool = True
     enable_code_execution: bool = True
     enable_auto_archive: bool = False
@@ -84,32 +73,86 @@ class FeatureFlags:
     enable_dalle: bool = True
     enable_admin_dashboard: bool = True
 
+    class Config:
+        frozen = True
 
-@dataclass(frozen=True)
-class Settings:
-    openai_api_key: Optional[str]
-    openai_organization: Optional[str]
-    default_model: str = "gpt-4o-mini"
-    fallback_model: str = "gpt-3.5-turbo"
-    gpt5_model: str = "gpt-5"
-    vision_model: str = "gpt-4o-mini"
-    dalle_model: str = "dall-e-3"
-    whisper_model: str = "gpt-4o-mini-transcribe"
-    tts_voice_default: str = "alloy"
-    embeddings_model: str = "text-embedding-3-small"
-    temperature_default: float = 0.7
-    max_output_tokens: int = 1024
-    persona_dir: Path = ROOT_DIR / "personas"
-    assets_dir: Path = ROOT_DIR / "assets"
-    storage_dir: Path = ROOT_DIR / "storage"
-    data_dir: Path = ROOT_DIR / "storage" / "data"
-    moderation_policy: ModerationPolicy = ModerationPolicy()
-    rate_limit: RateLimitConfig = RateLimitConfig()
-    feature_flags: FeatureFlags = FeatureFlags()
-    admin_passphrase: Optional[str] = None
-    hf_dataset_repo: Optional[str] = None
-    tavily_api_key: Optional[str] = None
-    serpapi_api_key: Optional[str] = None
+
+class Settings(BaseSettings):
+    openai_api_key: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
+    openai_organization: Optional[str] = Field(default=None, env="OPENAI_ORGANIZATION")
+    default_model: str = Field(default="gpt-4o-mini", env="DEFAULT_MODEL")
+    fallback_model: str = Field(default="gpt-3.5-turbo", env="FALLBACK_MODEL")
+    gpt5_model: str = Field(default="gpt-5", env="GPT5_MODEL")
+    vision_model: str = Field(default="gpt-4o-mini", env="VISION_MODEL")
+    dalle_model: str = Field(default="dall-e-3", env="DALLE_MODEL")
+    whisper_model: str = Field(default="gpt-4o-mini-transcribe", env="WHISPER_MODEL")
+    tts_voice_default: str = Field(default="alloy", env="TTS_VOICE")
+    embeddings_model: str = Field(default="text-embedding-3-small", env="EMBEDDINGS_MODEL")
+    temperature_default: float = Field(default=0.7, env="TEMPERATURE_DEFAULT")
+    max_output_tokens: int = Field(default=1024, env="MAX_OUTPUT_TOKENS")
+    persona_dir: Path = Field(default_factory=lambda: ROOT_DIR / "personas", env="PERSONA_DIR")
+    assets_dir: Path = Field(default_factory=lambda: ROOT_DIR / "assets", env="ASSETS_DIR")
+    storage_dir: Path = Field(default_factory=lambda: ROOT_DIR / "storage", env="STORAGE_DIR")
+    data_dir: Path = Field(default_factory=lambda: ROOT_DIR / "storage" / "data")
+    moderation_policy: ModerationPolicy = Field(default_factory=ModerationPolicy)
+    rate_limit: RateLimitConfig = Field(default_factory=RateLimitConfig)
+    feature_flags: FeatureFlags = Field(default_factory=FeatureFlags)
+    admin_passphrase: Optional[str] = Field(default=None, env="ADMIN_PASSPHRASE")
+    hf_dataset_repo: Optional[str] = Field(default=None, env="HF_DATASET_REPO")
+    tavily_api_key: Optional[str] = Field(default=None, env="TAVILY_API_KEY")
+    serpapi_api_key: Optional[str] = Field(default=None, env="SERPAPI_API_KEY")
+
+    class Config:
+        env_file = str(ENV_PATH) if ENV_PATH.exists() else None
+        env_file_encoding = "utf-8"
+        case_sensitive = False
+
+    @root_validator(pre=True)
+    def _derive_nested_models(cls, values: Dict[str, object]) -> Dict[str, object]:
+        if "feature_flags" not in values:
+            values["feature_flags"] = FeatureFlags(
+                enable_voice=_bool_env("ENABLE_VOICE", True),
+                enable_search=_bool_env("ENABLE_SEARCH", True),
+                enable_code_execution=_bool_env("ENABLE_CODE_EXECUTION", True),
+                enable_auto_archive=_bool_env("ENABLE_AUTO_ARCHIVE", False),
+                enable_memory=_bool_env("ENABLE_MEMORY", True),
+                enable_vision=_bool_env("ENABLE_VISION", True),
+                enable_dalle=_bool_env("ENABLE_DALLE", True),
+                enable_admin_dashboard=_bool_env("ENABLE_ADMIN_DASHBOARD", True),
+            )
+
+        default_action = os.getenv("MODERATION_DEFAULT_ACTION")
+        if default_action and "moderation_policy" not in values:
+            values["moderation_policy"] = ModerationPolicy(default_action=default_action.strip().lower())
+
+        if "rate_limit" not in values:
+            from os import getenv
+
+            def _int_env(name: str, default: int) -> int:
+                try:
+                    return int(getenv(name, default))
+                except ValueError:
+                    return default
+
+            values["rate_limit"] = RateLimitConfig(
+                requests_per_minute=_int_env("REQUESTS_PER_MINUTE", 60),
+                cooldown_seconds=_int_env("COOLDOWN_SECONDS", 5),
+            )
+
+        return values
+
+    @validator("persona_dir", "assets_dir", "storage_dir", pre=True, always=True)
+    def _ensure_directory(cls, value: object) -> Path:
+        path = Path(value) if value is not None else ROOT_DIR / "storage"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @validator("data_dir", pre=True, always=True)
+    def _ensure_data_dir(cls, value: object, values: Dict[str, object]) -> Path:
+        storage: Path = values.get("storage_dir") or ROOT_DIR / "storage"
+        path = Path(value) if value is not None else storage / "data"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
     def require_openai_key(self) -> str:
         if not self.openai_api_key:
@@ -121,57 +164,7 @@ class Settings:
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    feature_flags = FeatureFlags(
-        enable_voice=_bool_env("ENABLE_VOICE", True),
-        enable_search=_bool_env("ENABLE_SEARCH", True),
-        enable_code_execution=_bool_env("ENABLE_CODE_EXECUTION", True),
-        enable_auto_archive=_bool_env("ENABLE_AUTO_ARCHIVE", False),
-        enable_memory=_bool_env("ENABLE_MEMORY", True),
-        enable_vision=_bool_env("ENABLE_VISION", True),
-        enable_dalle=_bool_env("ENABLE_DALLE", True),
-        enable_admin_dashboard=_bool_env("ENABLE_ADMIN_DASHBOARD", True),
-    )
-
-    moderation_policy = ModerationPolicy()
-    default_action = os.getenv("MODERATION_DEFAULT_ACTION")
-    if default_action:
-        moderation_policy = ModerationPolicy(default_action=default_action.strip().lower())
-
-    storage_dir = Path(os.getenv("STORAGE_DIR", str(ROOT_DIR / "storage")))
-    data_dir = storage_dir / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    persona_dir = Path(os.getenv("PERSONA_DIR", str(ROOT_DIR / "personas")))
-    persona_dir.mkdir(parents=True, exist_ok=True)
-
-    return Settings(
-        openai_api_key=os.getenv("OPENAI_API_KEY"),
-        openai_organization=os.getenv("OPENAI_ORGANIZATION"),
-        default_model=os.getenv("DEFAULT_MODEL", "gpt-4o-mini"),
-        fallback_model=os.getenv("FALLBACK_MODEL", "gpt-3.5-turbo"),
-        gpt5_model=os.getenv("GPT5_MODEL", "gpt-5"),
-        vision_model=os.getenv("VISION_MODEL", "gpt-4o"),
-        dalle_model=os.getenv("DALLE_MODEL", "dall-e-3"),
-        whisper_model=os.getenv("WHISPER_MODEL", "gpt-4o-mini-transcribe"),
-        tts_voice_default=os.getenv("TTS_VOICE", "alloy"),
-        embeddings_model=os.getenv("EMBEDDINGS_MODEL", "text-embedding-3-small"),
-        temperature_default=float(os.getenv("TEMPERATURE_DEFAULT", 0.7)),
-        max_output_tokens=int(os.getenv("MAX_OUTPUT_TOKENS", 1024)),
-        persona_dir=persona_dir,
-        assets_dir=Path(os.getenv("ASSETS_DIR", str(ROOT_DIR / "assets"))),
-        storage_dir=storage_dir,
-        data_dir=data_dir,
-        moderation_policy=moderation_policy,
-        rate_limit=RateLimitConfig(
-            requests_per_minute=_int_env("REQUESTS_PER_MINUTE", 60),
-            cooldown_seconds=_int_env("COOLDOWN_SECONDS", 5),
-        ),
-        feature_flags=feature_flags,
-        admin_passphrase=os.getenv("ADMIN_PASSPHRASE"),
-        hf_dataset_repo=os.getenv("HF_DATASET_REPO"),
-        tavily_api_key=os.getenv("TAVILY_API_KEY"),
-        serpapi_api_key=os.getenv("SERPAPI_API_KEY"),
-    )
+    return Settings()
 
 
-__all__ = ["Settings", "get_settings"]
+__all__ = ["Settings", "FeatureFlags", "RateLimitConfig", "ModerationPolicy", "get_settings"]

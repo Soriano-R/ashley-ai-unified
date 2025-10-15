@@ -13,11 +13,10 @@ from pathlib import Path
 from dotenv import load_dotenv
 from huggingface_hub import login as hf_login
 
+from app.logging import configure_logging
+
 load_dotenv()
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+configure_logging()
 logger = logging.getLogger(__name__)
 HF_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
 if HF_TOKEN:
@@ -36,13 +35,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from fastapi.responses import JSONResponse
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
 
 # Import your existing backend logic
 from app.orchestrator import ChatOrchestrator
