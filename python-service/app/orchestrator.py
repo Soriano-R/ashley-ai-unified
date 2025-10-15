@@ -6,7 +6,7 @@ from typing import Dict, Generator, List, Optional
 from app.config import ModerationAction, get_settings
 from app.moderation import ModerationResult, evaluate_text, get_moderation_controller
 from app.personas import load_persona_bundle
-from app.router import RoutingContext, select_model
+from app.router import RoutingContext, build_routing_context, select_model
 from app.state import Attachment, ChatState
 from storage.memory_store import MemoryEntry, get_memory_store
 from storage.session_store import SessionStore
@@ -168,13 +168,14 @@ class ChatOrchestrator:
         moderation_result = self._handle_moderation(state, user_text)
 
         history_message_count = len(state.messages)
-        routing_context = RoutingContext(
+        routing_context = build_routing_context(
             text=user_text,
             persona_names=state.persona_names,
             attachments=state.attachments,
             history_message_count=history_message_count,
             override_model=state.model_override,
             force_vision=any(att.type == "image" for att in attachments),
+            temperature=state.temperature,
         )
         model_choice = select_model(routing_context)
         state.active_model = model_choice.model

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Sequence, Tuple
 
 from app.config import get_settings
 from app.state import Attachment
@@ -32,11 +32,11 @@ CODE_PATTERNS = [
 ]
 
 
-@dataclass
+@dataclass(frozen=True)
 class RoutingContext:
     text: str
-    persona_names: List[str]
-    attachments: List[Attachment]
+    persona_names: Tuple[str, ...]
+    attachments: Tuple[Attachment, ...]
     history_message_count: int
     override_model: Optional[str] = None
     force_vision: bool = False
@@ -44,11 +44,11 @@ class RoutingContext:
     temperature: float = 0.7
 
 
-@dataclass
+@dataclass(frozen=True)
 class ModelChoice:
     model: str
     reason: str
-    tools: List[str]
+    tools: Tuple[str, ...]
 
 
 def _contains_code(text: str) -> bool:
@@ -57,13 +57,37 @@ def _contains_code(text: str) -> bool:
     return ";" in text and "{" in text
 
 
+def build_routing_context(
+    *,
+    text: str,
+    persona_names: Sequence[str],
+    attachments: Sequence[Attachment],
+    history_message_count: int,
+    override_model: Optional[str] = None,
+    force_vision: bool = False,
+    force_lightweight: bool = False,
+    temperature: float = 0.7,
+) -> RoutingContext:
+    return RoutingContext(
+        text=text,
+        persona_names=tuple(persona_names),
+        attachments=tuple(attachments),
+        history_message_count=history_message_count,
+        override_model=override_model,
+        force_vision=force_vision,
+        force_lightweight=force_lightweight,
+        temperature=temperature,
+    )
+
+
 def select_model(context: RoutingContext) -> ModelChoice:
     settings = get_settings()
     if context.override_model:
+        tools = tuple(_derive_tools(context, context.override_model))
         return ModelChoice(
             model=context.override_model,
             reason="User override",
-            tools=_derive_tools(context, context.override_model),
+            tools=tools,
         )
     text_lower = context.text.lower()
     needs_vision = context.force_vision or any(att.type == "image" for att in context.attachments)
@@ -87,7 +111,7 @@ def select_model(context: RoutingContext) -> ModelChoice:
         if persona in persona_map:
             model = persona_map[persona]
             reason = f"Persona-based routing: {persona}"
-            tools = _derive_tools(context, model)
+            tools = tuple(_derive_tools(context, model))
             return ModelChoice(model=model, reason=reason, tools=tools)
 
     if needs_vision:
@@ -106,7 +130,7 @@ def select_model(context: RoutingContext) -> ModelChoice:
         model = settings.default_model
         reason = "Default routing"
 
-    tools = _derive_tools(context, model)
+    tools = tuple(_derive_tools(context, model))
     return ModelChoice(model=model, reason=reason, tools=tools)
 
 
@@ -123,4 +147,4 @@ def _derive_tools(context: RoutingContext, model: str) -> List[str]:
     return tools
 
 
-__all__ = ["RoutingContext", "ModelChoice", "select_model"]
+__all__ = ["RoutingContext", "ModelChoice", "select_model", "build_routing_context"]

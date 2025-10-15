@@ -117,11 +117,17 @@ class ChatState:
         self.active_model = get_settings().default_model
 
 
-DEFAULT_STATE = ChatState()
+def create_chat_state(**overrides: Any) -> ChatState:
+    state = ChatState()
+    for key, value in overrides.items():
+        setattr(state, key, value)
+    return state
+
 
 __all__ = [
     "Attachment",
     "ChatState",
     "TokenUsage",
     "RateLimitStatus",
+    "create_chat_state",
 ]
