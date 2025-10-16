@@ -62,6 +62,19 @@ class ChatOrchestrator:
             force_vision=any(att.type == "image" for att in attachments),
             temperature=state.temperature,
         )
+        # Persona-based model override
+        persona_model_map = {
+            "Ashley_NSFW": "llama-3.1-8b-instruct",
+            "Ashley_SFW": "gpt-4o-mini",
+            # Add more persona-model mappings as needed
+        }
+        for persona in state.persona_names:
+            if persona in persona_model_map:
+                state.model_override = persona_model_map[persona]
+                break  # Use first matching persona
+        else:
+            state.model_override = None  # No override if no mapping found
+
         model_choice = select_model(routing_context)
         state.active_model = model_choice.model
         logger.info(
