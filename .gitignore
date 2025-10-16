@@ -60,3 +60,9 @@ wheels/
 storage/data/
 sessions/
 python-service/.cache/
+python-service/models/
+python-service/checkpoints/
+.huggingface/
+transformers_cache/
+*.safetensors
+*.bin
