@@ -4,19 +4,21 @@ Handles loading, inference, and fine-tuning of PyTorch models
 """
 
 import os
-import torch
+import json
+import logging
+from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional, Union, Any
+
+import torch
+from huggingface_hub import snapshot_download
+from peft import LoraConfig, get_peft_model, TaskType
 from transformers import (
-    AutoTokenizer, 
-    AutoModelForCausalLM, 
+    AutoTokenizer,
+    AutoModelForCausalLM,
     AutoConfig,
     BitsAndBytesConfig,
-    pipeline
 )
-from peft import LoraConfig, get_peft_model, TaskType
-import json
-from datetime import datetime
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,6 @@ class PyTorchModelManager:
     """
     
     def __init__(self, config_path: str = "pytorch_models.json"):
-        import os
         self.repo_regular = os.getenv("HF_REPO_REGULAR")
         self.repo_nsfw = os.getenv("HF_REPO_NSFW")
         self.repo_gguf_regular = os.getenv("HF_REPO_GGUF_REGULAR")
@@ -42,6 +43,9 @@ class PyTorchModelManager:
         self.current_tokenizer = None
         self.device = self._get_optimal_device()
         self.load_config()
+        cache_dir = self.config.get("cache_dir") or "./.cache/models"
+        self.cache_dir = Path(cache_dir).expanduser().resolve()
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
     
     def _get_optimal_device(self) -> str:
         """Determine the best device for inference"""
@@ -55,6 +59,34 @@ class PyTorchModelManager:
         else:
             logger.info("Using CPU")
             return "cpu"
+
+    def _resolve_model_artifacts(self, model_id: str, model_config: Dict[str, Any]) -> str:
+        """Download model artifacts if necessary and return local path."""
+        local_path = model_config.get("local_path")
+        if local_path:
+            path = Path(local_path)
+            if path.exists():
+                return str(path)
+
+        model_name = model_config.get("model_name")
+        if not model_name:
+            raise ValueError(f"Model {model_id} missing 'model_name' in configuration")
+
+        cache_subdir = self.cache_dir / model_id
+        cache_subdir.mkdir(parents=True, exist_ok=True)
+        try:
+            local_dir = snapshot_download(
+                repo_id=model_name,
+                local_dir=str(cache_subdir),
+                local_dir_use_symlinks=True,
+                resume_download=True,
+            )
+        except Exception as exc:
+            logger.error("Failed to download model '%s': %s", model_name, exc)
+            raise
+
+        model_config["local_path"] = local_dir
+        return local_dir
     
     def load_config(self):
         default_config = {
@@ -219,19 +251,19 @@ class PyTorchModelManager:
         try:
             logger.info(f"Loading model: {model_name}")
 
-            # Load tokenizer
-            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            local_dir = self._resolve_model_artifacts(model_id, model_config)
+
+            tokenizer = AutoTokenizer.from_pretrained(local_dir)
             if tokenizer.pad_token is None:
                 tokenizer.pad_token = tokenizer.eos_token
 
-            # Prepare quantization
             quantization_config = self.get_quantization_config(
                 model_config.get("quantization", "none")
             )
 
-            preferred_dtype = torch.float16 if self.device == "cuda" else torch.float32
+            preferred_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
             base_kwargs = {
-                "device_map": "auto" if self.device == "cuda" else None,
+                "device_map": "auto" if torch.cuda.is_available() else None,
                 "trust_remote_code": True,
             }
             if quantization_config:
@@ -241,7 +273,7 @@ class PyTorchModelManager:
 
             try:
                 model = AutoModelForCausalLM.from_pretrained(
-                    model_name,
+                    local_dir,
                     **load_kwargs,
                 )
             except TypeError as err:
@@ -252,29 +284,28 @@ class PyTorchModelManager:
                     load_kwargs.pop("dtype", None)
                     load_kwargs["torch_dtype"] = preferred_dtype
                     model = AutoModelForCausalLM.from_pretrained(
-                        model_name,
+                        local_dir,
                         **load_kwargs,
                     )
                 else:
                     raise
 
-            # Move to device if not using device_map
-            if self.device != "cuda":
+            if not torch.cuda.is_available():
                 model = model.to(self.device)
 
-            # Store loaded model
             self.models[model_id] = {
                 "model": model,
                 "tokenizer": tokenizer,
                 "config": model_config,
                 "loaded": True,
-                "load_time": datetime.now().isoformat()
+                "load_time": datetime.now().isoformat(),
+                "path": local_dir,
             }
 
             self.current_model = model
             self.current_tokenizer = tokenizer
 
-            logger.info(f"Successfully loaded {model_id}")
+            logger.info("Successfully loaded %s from %s", model_id, local_dir)
             return True
 
         except Exception as e:
@@ -361,40 +392,43 @@ class PyTorchModelManager:
         Returns:
             bool: Success status
         """
-        if model_id not in self.models or not self.models[model_id]["loaded"]:
-            logger.error(f"Model {model_id} not loaded")
-            return False
-        
-        try:
-            # Default LoRA config
-            if lora_config is None:
-                lora_config = {
-                    "r": 16,
-                    "lora_alpha": 32,
-                    "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj"],
-                    "lora_dropout": 0.1,
-                    "bias": "none",
-                    "task_type": TaskType.CAUSAL_LM
-                }
-            
-            # Create LoRA config
-            peft_config = LoraConfig(**lora_config)
-            
-            # Get PEFT model
-            model = self.models[model_id]["model"]
-            peft_model = get_peft_model(model, peft_config)
-            
-            # Update stored model
-            self.models[model_id]["peft_model"] = peft_model
-            self.models[model_id]["peft_config"] = peft_config
-            self.models[model_id]["finetuning_ready"] = True
-            
-            logger.info(f"Model {model_id} prepared for fine-tuning")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error preparing model for fine-tuning: {e}")
-            return False
+        if model_id not in self.models or not self.models[model_id].get("loaded"):
+            raise ValueError(f"Model {model_id} must be loaded before fine-tuning")
+
+        base_model = self.models[model_id]["model"]
+        if base_model is None:
+            raise ValueError("Selected model does not have a PyTorch instance loaded")
+
+        cfg = {
+            "r": 16,
+            "lora_alpha": 32,
+            "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj"],
+            "lora_dropout": 0.1,
+            "bias": "none",
+            "task_type": TaskType.CAUSAL_LM,
+        }
+        if lora_config:
+            cfg.update(lora_config)
+
+        target_modules = cfg.get("target_modules", [])
+        missing = [
+            module for module in target_modules
+            if not any(module in name for name in base_model.state_dict().keys())
+        ]
+        if missing:
+            raise ValueError(
+                f"Target modules {missing} not found in model parameters; adjust LoRA configuration"
+            )
+
+        peft_config = LoraConfig(**cfg)
+        peft_model = get_peft_model(base_model, peft_config)
+
+        self.models[model_id]["peft_model"] = peft_model
+        self.models[model_id]["peft_config"] = peft_config
+        self.models[model_id]["finetuning_ready"] = True
+
+        logger.info("Model %s prepared for LoRA fine-tuning", model_id)
+        return True
     
     def get_model_info(self) -> Dict:
         """Get information about loaded models"""
@@ -439,6 +473,14 @@ class PyTorchModelManager:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             logger.info(f"Unloaded model {model_id}")
+
+    def reload_model(self, model_id: str) -> bool:
+        """Convenience helper to reload a model from scratch."""
+        self.unload_model(model_id)
+        if self.current_model is not None:
+            self.current_model = None
+            self.current_tokenizer = None
+        return self.load_model(model_id, force_reload=True)
     
     def list_available_models(self) -> List[Dict]:
         """List all available models from config"""
