@@ -1,18 +1,232 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import UserManager from './UserManager'
-import { User } from '@/types'
+import { ModelOption, PersonaOption, User } from '@/types'
 
 interface AdminPanelProps {
   isOpen: boolean
   onClose: () => void
   user: User
+  personas?: PersonaOption[]
+  personaCategories?: Record<string, { label: string; description: string }>
+  models?: ModelOption[]
+  onPersonaMutate?: () => Promise<void> | void
 }
 
-export default function AdminPanel({ isOpen, onClose, user }: AdminPanelProps) {
+export default function AdminPanel({
+  isOpen,
+  onClose,
+  user,
+  personas = [],
+  personaCategories = {},
+  models = [],
+  onPersonaMutate,
+}: AdminPanelProps) {
   const [activeTab, setActiveTab] = useState('api-keys')
   const [showUserManager, setShowUserManager] = useState(false)
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string>('')
+  const [personaMessage, setPersonaMessage] = useState<string | null>(null)
+  const [personaSaving, setPersonaSaving] = useState(false)
+
+  const personaCategoriesList = useMemo(
+    () => Object.keys(personaCategories).map((key) => ({ id: key, ...personaCategories[key] })),
+    [personaCategories]
+  )
+
+  const modelCategoryOptions = useMemo(() => {
+    const acc: Record<string, true> = {}
+    models.forEach((model) => {
+      model.categories?.forEach((cat) => {
+        acc[cat] = true
+      })
+    })
+    return Object.keys(acc)
+  }, [models])
+
+  type PersonaDraft = {
+    id: string
+    label: string
+    description: string
+    files: string
+    tags: string
+    category: string
+    nsfw: boolean
+    defaultModel: string
+    allowedModelCategories: string[]
+    allowedModelIds: string[]
+    isNew: boolean
+  }
+
+  const toDraft = (persona?: PersonaOption): PersonaDraft => {
+    if (!persona) {
+      return {
+        id: '',
+        label: '',
+        description: '',
+        files: '',
+        tags: '',
+        category: personaCategoriesList[0]?.id ?? 'General',
+        nsfw: false,
+        defaultModel: 'auto',
+        allowedModelCategories: [],
+        allowedModelIds: [],
+        isNew: true,
+      }
+    }
+
+    return {
+      id: persona.id,
+      label: persona.label,
+      description: persona.description,
+      files: (persona.files ?? []).join('\n'),
+      tags: persona.tags.join(', '),
+      category: persona.category,
+      nsfw: persona.nsfw,
+      defaultModel: persona.defaultModel ?? 'auto',
+      allowedModelCategories: persona.allowedModelCategories ?? [],
+      allowedModelIds: persona.allowedModelIds ?? [],
+      isNew: false,
+    }
+  }
+
+  const [personaDraft, setPersonaDraft] = useState<PersonaDraft>(() => toDraft(personas[0]))
+
+  const personaCategoryOptions = useMemo(() => {
+    const categories = new Set(personaCategoriesList.map((item) => item.id))
+    if (personaDraft.category) {
+      categories.add(personaDraft.category)
+    }
+    return Array.from(categories)
+  }, [personaCategoriesList, personaDraft.category])
+
+  const modelIdOptions = useMemo(() => {
+    const options = new Set<string>(['auto'])
+    models.forEach((model) => options.add(model.id))
+    personaDraft.allowedModelIds.forEach((id) => options.add(id))
+    return Array.from(options)
+  }, [models, personaDraft.allowedModelIds])
+
+  useEffect(() => {
+    if (personaDraft.isNew) return
+    if (personas.length > 0) {
+      const match = personas.find((p) => p.id === selectedPersonaId) ?? personas[0]
+      if (match) {
+        setSelectedPersonaId(match.id)
+        setPersonaDraft(toDraft(match))
+      }
+    } else {
+      setSelectedPersonaId('')
+      setPersonaDraft(toDraft())
+    }
+  }, [personas])
+
+  const handleSelectPersona = (value: string) => {
+    setPersonaMessage(null)
+    if (value === 'new') {
+      setSelectedPersonaId('new')
+      setPersonaDraft(toDraft())
+      return
+    }
+    const match = personas.find((p) => p.id === value)
+    if (match) {
+      setSelectedPersonaId(match.id)
+      setPersonaDraft(toDraft(match))
+    }
+  }
+
+  const handlePersonaField = <K extends keyof PersonaDraft>(key: K, value: PersonaDraft[K]) => {
+    setPersonaDraft((prev) => ({ ...prev, [key]: value }))
+    setPersonaMessage(null)
+  }
+
+  const handlePersonaSave = async () => {
+    if (!personaDraft.id.trim()) {
+      setPersonaMessage('Persona ID is required.')
+      return
+    }
+    if (!personaDraft.label.trim()) {
+      setPersonaMessage('Persona label is required.')
+      return
+    }
+
+    const files = personaDraft.files
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+    const tags = personaDraft.tags
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean)
+
+    const payload = {
+      action: personaDraft.isNew && !personas.find((p) => p.id === personaDraft.id) ? 'create' : 'update',
+      persona: {
+        id: personaDraft.id.trim(),
+        label: personaDraft.label.trim(),
+        files,
+        description: personaDraft.description.trim(),
+        tags,
+        category: personaDraft.category || 'General',
+        nsfw: personaDraft.nsfw,
+        default_model: personaDraft.defaultModel || 'auto',
+        allowed_model_categories: personaDraft.allowedModelCategories,
+        allowed_model_ids: personaDraft.allowedModelIds.length ? personaDraft.allowedModelIds : null,
+      },
+    }
+
+    try {
+      setPersonaSaving(true)
+      setPersonaMessage(null)
+      const response = await fetch('/api/personas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}))
+        throw new Error(errorBody?.error || `Request failed with status ${response.status}`)
+      }
+      setPersonaMessage('Persona saved successfully.')
+      setPersonaDraft((prev) => ({ ...prev, isNew: false }))
+      setSelectedPersonaId(personaDraft.id)
+      if (onPersonaMutate) await onPersonaMutate()
+    } catch (error: any) {
+      setPersonaMessage(error.message || 'Failed to save persona.')
+    } finally {
+      setPersonaSaving(false)
+    }
+  }
+
+  const handlePersonaDelete = async () => {
+    if (personaDraft.isNew || !selectedPersonaId || !personas.find((p) => p.id === selectedPersonaId)) {
+      setPersonaMessage('Select an existing persona to delete.')
+      return
+    }
+    if (!confirm('Delete this persona? This action cannot be undone.')) return
+
+    try {
+      setPersonaSaving(true)
+      setPersonaMessage(null)
+      const response = await fetch('/api/personas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', persona_id: selectedPersonaId }),
+      })
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}))
+        throw new Error(errorBody?.error || `Request failed with status ${response.status}`)
+      }
+      setPersonaMessage('Persona deleted.')
+      setSelectedPersonaId('new')
+      setPersonaDraft(toDraft())
+      if (onPersonaMutate) await onPersonaMutate()
+    } catch (error: any) {
+      setPersonaMessage(error.message || 'Failed to delete persona.')
+    } finally {
+      setPersonaSaving(false)
+    }
+  }
 
   // Admin Settings State
   const [adminSettings, setAdminSettings] = useState({
@@ -180,6 +394,7 @@ export default function AdminPanel({ isOpen, onClose, user }: AdminPanelProps) {
 
   const tabs = [
     { id: 'users', name: 'User Management' },
+    { id: 'personas', name: 'Personas' },
     { id: 'api-keys', name: 'API Keys' },
     { id: 'export-controls', name: 'Export Controls' },
     { id: 'translation', name: 'Translation' },
@@ -300,6 +515,193 @@ export default function AdminPanel({ isOpen, onClose, user }: AdminPanelProps) {
                       The User Manager provides comprehensive tools for managing user accounts, tracking payments, 
                       and analyzing user behavior. Click &quot;Open User Manager&quot; to access the full interface.
                     </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Personas Tab */}
+              {activeTab === 'personas' && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-medium text-white">Persona Management</h3>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleSelectPersona('new')}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
+                      >
+                        New Persona
+                      </button>
+                    </div>
+                  </div>
+                  {personaMessage && (
+                    <div className="bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-sm text-gray-200">
+                      {personaMessage}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Persona</label>
+                        <select
+                          value={personaDraft.isNew ? 'new' : selectedPersonaId}
+                          onChange={(event) => handleSelectPersona(event.target.value)}
+                          className="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-sm text-white"
+                        >
+                          {personas.map((persona) => (
+                            <option key={persona.id} value={persona.id}>
+                              {persona.label} ({persona.id})
+                            </option>
+                          ))}
+                          <option value="new">+ Create new persona…</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Persona ID</label>
+                        <input
+                          value={personaDraft.id}
+                          onChange={(event) => handlePersonaField('id', event.target.value)}
+                          disabled={!personaDraft.isNew && personas.some((p) => p.id === personaDraft.id)}
+                          className="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-sm text-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Label</label>
+                        <input
+                          value={personaDraft.label}
+                          onChange={(event) => handlePersonaField('label', event.target.value)}
+                          className="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-sm text-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Category</label>
+                        <input
+                          list="persona-category-options"
+                          value={personaDraft.category}
+                          onChange={(event) => handlePersonaField('category', event.target.value)}
+                          className="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-sm text-white"
+                        />
+                        <datalist id="persona-category-options">
+                          {personaCategoryOptions.map((category) => (
+                            <option key={category} value={category} />
+                          ))}
+                        </datalist>
+                      </div>
+
+                      <label className="inline-flex items-center gap-2 text-sm text-gray-300">
+                        <input
+                          type="checkbox"
+                          checked={personaDraft.nsfw}
+                          onChange={(event) => handlePersonaField('nsfw', event.target.checked)}
+                          className="rounded border-gray-600 bg-gray-800"
+                        />
+                        NSFW Persona
+                      </label>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Description</label>
+                        <textarea
+                          value={personaDraft.description}
+                          onChange={(event) => handlePersonaField('description', event.target.value)}
+                          className="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-sm text-white h-28"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Prompt Files (one per line)</label>
+                        <textarea
+                          value={personaDraft.files}
+                          onChange={(event) => handlePersonaField('files', event.target.value)}
+                          className="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-sm text-white h-24 font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Tags (comma separated)</label>
+                        <input
+                          value={personaDraft.tags}
+                          onChange={(event) => handlePersonaField('tags', event.target.value)}
+                          className="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-sm text-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Default Model</label>
+                        <select
+                          value={personaDraft.defaultModel}
+                          onChange={(event) => handlePersonaField('defaultModel', event.target.value)}
+                          className="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-sm text-white"
+                        >
+                          {modelIdOptions.map((modelId) => (
+                            <option key={modelId} value={modelId}>
+                              {modelId}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Allowed Model Categories</label>
+                        <select
+                          multiple
+                          value={personaDraft.allowedModelCategories}
+                          onChange={(event) => handlePersonaField(
+                            'allowedModelCategories',
+                            Array.from(event.target.selectedOptions, (option) => option.value)
+                          )}
+                          className="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-sm text-white h-24"
+                        >
+                          {modelCategoryOptions.map((category) => (
+                            <option key={category} value={category}>
+                              {category}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Allowed Model IDs</label>
+                        <select
+                          multiple
+                          value={personaDraft.allowedModelIds}
+                          onChange={(event) => handlePersonaField(
+                            'allowedModelIds',
+                            Array.from(event.target.selectedOptions, (option) => option.value)
+                          )}
+                          className="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-sm text-white h-24"
+                        >
+                          {modelIdOptions.map((modelId) => (
+                            <option key={modelId} value={modelId}>
+                              {modelId}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3">
+                    {!personaDraft.isNew && (
+                      <button
+                        onClick={handlePersonaDelete}
+                        disabled={personaSaving}
+                        className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-60"
+                      >
+                        Delete Persona
+                      </button>
+                    )}
+                    <button
+                      onClick={handlePersonaSave}
+                      disabled={personaSaving}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-60"
+                    >
+                      {personaSaving ? 'Saving…' : 'Save Persona'}
+                    </button>
                   </div>
                 </div>
               )}

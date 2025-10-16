@@ -83,19 +83,16 @@ export default function ChatInterface() {
   // AbortController for in-flight chat requests
   const chatAbortRef = useRef<AbortController | null>(null)
 
-  useEffect(() => {
-    let isMounted = true
+  const loadPersonaCatalog = useCallback(async () => {
+    try {
+      const catalog = await apiClient.getPersonas()
 
-    async function loadPersonaCatalog() {
-      try {
-        const catalog = await apiClient.getPersonas()
-        if (!isMounted) return
+      setPersonaOptions(catalog.personas)
+      setPersonaCategories(catalog.personaCategories || {})
+      setModelOptions(catalog.models)
+      setModelCategories(catalog.modelCategories || {})
 
-        setPersonaOptions(catalog.personas)
-        setPersonaCategories(catalog.personaCategories || {})
-        setModelOptions(catalog.models)
-        setModelCategories(catalog.modelCategories || {})
-
+      if (!catalog.personas.some((persona) => persona.id === currentPersonaId)) {
         const preferredPersona =
           catalog.personas.find((persona) => persona.id === DEFAULT_PERSONA_ID) ?? catalog.personas[0]
 
@@ -121,34 +118,23 @@ export default function ChatInterface() {
           ])
           setActiveSessionId('1')
           setMessages([])
-        } else {
-          setSessions([
-            {
-              id: '1',
-              title: 'New Chat',
-              messages: [],
-              personaId: DEFAULT_PERSONA_ID,
-              modelId: 'auto',
-            },
-          ])
-          setActiveSessionId('1')
-          setMessages([])
-        }
-      } catch (error) {
-        console.error('Failed to load persona catalog:', error)
-      } finally {
-        if (isMounted) {
-          setCatalogLoaded(true)
         }
       }
+    } catch (error) {
+      console.error('Failed to load persona catalog:', error)
+    } finally {
+      setCatalogLoaded(true)
     }
+  }, [currentPersonaId])
 
+  const refreshPersonaCatalog = useCallback(async () => {
+    setCatalogLoaded(false)
+    await loadPersonaCatalog()
+  }, [loadPersonaCatalog])
+
+  useEffect(() => {
     loadPersonaCatalog()
-
-    return () => {
-      isMounted = false
-    }
-  }, [])
+  }, [loadPersonaCatalog])
 
   // Cleanup timeouts on unmount
   useEffect(() => {
@@ -694,6 +680,10 @@ export default function ChatInterface() {
           isOpen={isAdminPanelOpen}
           onClose={() => setIsAdminPanelOpen(false)}
           user={currentUser}
+          personas={personaOptions}
+          personaCategories={personaCategories}
+          models={modelOptions}
+          onPersonaMutate={refreshPersonaCatalog}
         />
       )}
 
