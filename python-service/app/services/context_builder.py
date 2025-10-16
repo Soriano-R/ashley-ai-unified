@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 
 from app.personas import load_persona_bundle
 from app.state import Attachment, ChatState
+from app.services.background import run_sync
 from storage.memory_store import MemoryStore
 from tools.code_executor import execute as exec_code, format_result as format_code_result
 from tools.data_viz import dataframe_to_html
@@ -35,7 +36,7 @@ class ContextBuilder:
     def build_file_context(self, session_id: str, user_text: str, tools: List[str]) -> str:
         if "file_qna" in tools:
             try:
-                return self.fileqa_manager.build_context(session_id, user_text)
+                return run_sync(self.fileqa_manager.build_context, session_id, user_text)
             except Exception as exc:
                 logger.warning("File Q&A context failed: %s", exc, exc_info=True)
         return ""
@@ -52,7 +53,7 @@ class ContextBuilder:
                 query = user_text
             if query:
                 try:
-                    results = web_search(query, provider=state.search_provider, max_results=4)
+                    results = run_sync(web_search, query, provider=state.search_provider, max_results=4)
                 except Exception as exc:  # pragma: no cover - network failure path
                     logger.warning("Search failed: %s", exc)
                     results = []
@@ -71,7 +72,7 @@ class ContextBuilder:
                 code = user_text[start:end].strip()
             if code:
                 try:
-                    result = exec_code(code)
+                    result = run_sync(exec_code, code)
                     code_output = format_code_result(result)
                     code_output = sanitize_tool_output(code_output, 2000)
                 except Exception as exc:
