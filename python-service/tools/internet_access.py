@@ -11,7 +11,10 @@ from typing import Dict, List, Optional, Any, Union
 from datetime import datetime, timedelta
 import logging
 from bs4 import BeautifulSoup
-import wikipedia
+try:
+    import wikipedia
+except ImportError:  # pragma: no cover - optional runtime dependency
+    wikipedia = None  # type: ignore[assignment]
 from urllib.parse import quote_plus, urljoin, urlparse
 from dataclasses import dataclass
 import os
@@ -387,6 +390,9 @@ class InternetAccessManager:
     
     def search_wikipedia(self, query: str) -> List[SearchResult]:
         """Search Wikipedia (completely free)"""
+        if wikipedia is None:
+            logger.debug("Wikipedia dependency not installed; skipping wikipedia search.")
+            return []
         try:
             # Search for pages
             search_results = wikipedia.search(query, results=3)
@@ -417,9 +423,9 @@ class InternetAccessManager:
                                 source='wikipedia',
                                 timestamp=datetime.now()
                             ))
-                        except:
+                        except Exception:
                             continue
-                except:
+                except Exception:
                     continue
             
             return results[:self.config.get("max_results", 5)]
@@ -546,8 +552,9 @@ class InternetAccessManager:
             ('google', self.search_google),
             ('bing', self.search_bing),
             ('duckduckgo', self.search_duckduckgo_free),
-            ('wikipedia', self.search_wikipedia)
         ]
+        if wikipedia is not None:
+            search_methods.append(('wikipedia', self.search_wikipedia))
         
         for service_name, search_method in search_methods:
             try:

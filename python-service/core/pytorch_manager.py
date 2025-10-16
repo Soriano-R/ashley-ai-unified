@@ -10,15 +10,30 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Any
 
-import torch
+try:
+    import torch
+except ImportError:  # pragma: no cover - optional runtime dependency
+    torch = None
+
 from huggingface_hub import snapshot_download
-from peft import LoraConfig, get_peft_model, TaskType
-from transformers import (
-    AutoTokenizer,
-    AutoModelForCausalLM,
-    AutoConfig,
-    BitsAndBytesConfig,
-)
+try:
+    from peft import LoraConfig, get_peft_model, TaskType
+except ImportError:  # pragma: no cover - optional runtime dependency
+    LoraConfig = None  # type: ignore[assignment]
+    get_peft_model = None  # type: ignore[assignment]
+    TaskType = None  # type: ignore[assignment]
+try:
+    from transformers import (
+        AutoTokenizer,
+        AutoModelForCausalLM,
+        AutoConfig,
+        BitsAndBytesConfig,
+    )
+except ImportError:  # pragma: no cover - optional runtime dependency
+    AutoTokenizer = None  # type: ignore[assignment]
+    AutoModelForCausalLM = None  # type: ignore[assignment]
+    AutoConfig = None  # type: ignore[assignment]
+    BitsAndBytesConfig = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +56,19 @@ class PyTorchModelManager:
         self.models: Dict[str, Dict] = {}
         self.current_model = None
         self.current_tokenizer = None
+        self.torch_available = torch is not None
+        self.transformers_available = AutoTokenizer is not None and AutoModelForCausalLM is not None
+        self.local_backend_available = self.torch_available and self.transformers_available
+        if not self.local_backend_available:
+            missing = []
+            if not self.torch_available:
+                missing.append("torch")
+            if not self.transformers_available:
+                missing.append("transformers")
+            logger.warning(
+                "Missing dependencies (%s); disabling local PyTorch model features.",
+                ", ".join(missing) or "unknown",
+            )
         self.device = self._get_optimal_device()
         self.load_config()
         cache_dir = self.config.get("cache_dir") or "./.cache/models"
@@ -49,6 +77,8 @@ class PyTorchModelManager:
     
     def _get_optimal_device(self) -> str:
         """Determine the best device for inference"""
+        if torch is None:
+            return "cpu"
         if torch.cuda.is_available():
             gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
             logger.info(f"CUDA available - GPU memory: {gpu_memory:.1f}GB")
@@ -78,8 +108,6 @@ class PyTorchModelManager:
             local_dir = snapshot_download(
                 repo_id=model_name,
                 local_dir=str(cache_subdir),
-                local_dir_use_symlinks=True,
-                resume_download=True,
             )
         except Exception as exc:
             logger.error("Failed to download model '%s': %s", model_name, exc)
@@ -196,6 +224,9 @@ class PyTorchModelManager:
     
     def get_quantization_config(self, quantization: str) -> Optional[BitsAndBytesConfig]:
         """Get quantization configuration"""
+        if torch is None or BitsAndBytesConfig is None:
+            logger.debug("Quantization requested but required dependencies are unavailable; returning None.")
+            return None
         if quantization == "4bit":
             return BitsAndBytesConfig(
                 load_in_4bit=True,
@@ -248,6 +279,19 @@ class PyTorchModelManager:
             self.current_tokenizer = None
             return True
 
+        if not self.local_backend_available:
+            missing = []
+            if not self.torch_available:
+                missing.append("torch")
+            if not self.transformers_available:
+                missing.append("transformers")
+            logger.error(
+                "Cannot load local model '%s'; missing dependencies: %s",
+                model_id,
+                ", ".join(missing) or "unknown",
+            )
+            return False
+
         try:
             logger.info(f"Loading model: {model_name}")
 
@@ -261,6 +305,8 @@ class PyTorchModelManager:
                 model_config.get("quantization", "none")
             )
 
+            if torch is None:
+                raise RuntimeError("PyTorch is required for loading local models but is not available.")
             preferred_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
             base_kwargs = {
                 "device_map": "auto" if torch.cuda.is_available() else None,
@@ -335,6 +381,8 @@ class PyTorchModelManager:
         """
         if not self.current_model or not self.current_tokenizer:
             raise ValueError("No model loaded. Call load_model() first.")
+        if torch is None:
+            raise RuntimeError("PyTorch is not available; cannot generate responses.")
         
         # Get generation config
         gen_config = self.config["inference_config"].copy()
@@ -356,6 +404,8 @@ class PyTorchModelManager:
             ).to(self.device)
             
             # Generate
+            if torch is None:
+                raise RuntimeError("PyTorch is not available; cannot run inference.")
             with torch.no_grad():
                 outputs = self.current_model.generate(
                     **inputs,
@@ -392,6 +442,14 @@ class PyTorchModelManager:
         Returns:
             bool: Success status
         """
+        if not self.local_backend_available:
+            raise RuntimeError(
+                "Local PyTorch backend is unavailable; install torch and transformers before fine-tuning."
+            )
+        if LoraConfig is None or get_peft_model is None or TaskType is None:
+            raise RuntimeError(
+                "peft is not installed; install the 'peft' package to enable fine-tuning features."
+            )
         if model_id not in self.models or not self.models[model_id].get("loaded"):
             raise ValueError(f"Model {model_id} must be loaded before fine-tuning")
 
@@ -436,7 +494,8 @@ class PyTorchModelManager:
             "current_device": self.device,
             "available_models": list(self.config["models"].keys()),
             "loaded_models": {},
-            "memory_info": {}
+            "memory_info": {},
+            "local_backend_available": self.local_backend_available,
         }
         
         # Get loaded model info
@@ -449,7 +508,7 @@ class PyTorchModelManager:
                 }
         
         # Get memory info
-        if torch.cuda.is_available():
+        if torch is not None and torch.cuda.is_available():
             info["memory_info"]["cuda"] = {
                 "allocated": f"{torch.cuda.memory_allocated() / 1024**3:.2f}GB",
                 "cached": f"{torch.cuda.memory_reserved() / 1024**3:.2f}GB",
@@ -464,13 +523,13 @@ class PyTorchModelManager:
             # Unload current model
             self.current_model = None
             self.current_tokenizer = None
-            if torch.cuda.is_available():
+            if torch is not None and torch.cuda.is_available():
                 torch.cuda.empty_cache()
             logger.info("Unloaded current model")
         elif model_id in self.models:
             # Unload specific model
             del self.models[model_id]
-            if torch.cuda.is_available():
+            if torch is not None and torch.cuda.is_available():
                 torch.cuda.empty_cache()
             logger.info(f"Unloaded model {model_id}")
 

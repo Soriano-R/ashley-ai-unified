@@ -59,3 +59,4 @@ wheels/
 # Storage
 storage/data/
 sessions/
+python-service/.cache/

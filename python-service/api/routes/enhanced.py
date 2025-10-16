@@ -10,7 +10,7 @@ from uuid import uuid4
 from typing import Any, Dict, List, Optional, Tuple, Literal
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, root_validator
+from pydantic.v1 import BaseModel, Field, root_validator
 
 from app.persona_registry import (
     MODEL_CATEGORIES,
@@ -21,6 +21,8 @@ from app.persona_registry import (
     remove_persona,
     upsert_persona,
 )
+from app.config import get_settings
+import openai
 from core.enhanced_chat_engine import get_enhanced_chat_engine
 from core.pytorch_manager import get_pytorch_manager
 from tools.internet_access import get_internet_manager
@@ -259,6 +261,28 @@ def _limit_search_results(result: Dict[str, Any], max_total: Optional[int]) -> D
     return trimmed
 
 
+async def _generate_image(prompt: str, size: str) -> Optional[str]:
+    settings = get_settings()
+    if not settings.openai_api_key:
+        return None
+
+    openai.api_key = settings.openai_api_key
+    model = settings.dalle_model or "dall-e-3"
+    try:
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: openai.Image.create(prompt=prompt, size=size, model=model)  # type: ignore[attr-defined]
+        )
+        data = response.get("data", [])
+        if not data:
+            return None
+        return data[0].get("url")
+    except Exception:
+        logger.exception("Image generation via OpenAI failed")
+        return None
+
+
 def _resolve_history_and_message(
     request: EnhancedChatRequest,
 ) -> Tuple[List[Dict[str, str]], str]:
@@ -414,8 +438,12 @@ async def proxy_image(payload: Dict[str, Any]):
             "1024x1792": (1024, 1792),
         }.get(size, (1024, 1024))
 
-        seed = uuid4().hex
-        image_url = f"https://picsum.photos/seed/{seed}/{width}/{height}"
+        generated_url = await _generate_image(prompt, size)
+        if generated_url:
+            image_url = generated_url
+        else:
+            seed = uuid4().hex
+            image_url = f"https://picsum.photos/seed/{seed}/{width}/{height}"
         return ImageGenerationResponse(
             success=True,
             image_url=image_url,

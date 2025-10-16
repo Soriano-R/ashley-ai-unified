@@ -7,7 +7,7 @@ from typing import Dict, Optional
 
 from dotenv import load_dotenv
 from enum import Enum
-from pydantic import BaseModel, BaseSettings, Field, validator, root_validator
+from pydantic.v1 import BaseModel, BaseSettings, Field, validator, root_validator
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 ENV_PATH = ROOT_DIR / ".env"

@@ -12,6 +12,7 @@ from app.state import Attachment, ChatState
 from storage.memory_store import MemoryEntry, get_memory_store
 from storage.session_store import SessionStore
 from storage.usage_tracker import get_usage_tracker
+from tools.file_qna import get_fileqa_manager
 from tools.openai_client import StreamChunk, StreamResult, complete_response, stream_response
 
 logger = logging.getLogger(__name__)

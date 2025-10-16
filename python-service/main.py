@@ -30,7 +30,7 @@ else:
 sys.path.append(str(Path(__file__).parent))
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
@@ -124,7 +124,6 @@ def create_app() -> FastAPI:
     
     import hashlib
     import json
-    from fastapi import Request
     from pathlib import Path
 
     USERS_FILE = Path(__file__).parent / "storage" / "users.json"

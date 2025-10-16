@@ -5,52 +5,28 @@
 Ashley AI Unified is a full-stack Next.js app with an integrated Python FastAPI microservice. The project merges React frontend and Python AI backend in a single deployable codebase, using the existing `chatbot_env` virtual environment. All code, tests, and scripts are unified for seamless development and deployment.
 
 ### Major Components & Data Flow
-- **Frontend:** Next.js 15+ (TypeScript, Tailwind CSS, App Router)
-- **Backend:** Python FastAPI microservice (internal port 8001)
-- **API Integration:** Next.js API routes (`src/app/api/*`) act as proxies to Python service
-- **Session/Auth:** Managed in Next.js, validated in Python
-- **Streaming:** Chat uses Server-Sent Events via API proxy
-- **Personas:** AI personalities in `python-service/personas/`
-- **Model Management:** PyTorch & GGUF models via Python endpoints (`/api/models/pytorch/*`)
-- **Internet Search:** Python endpoints support multi-source search (API keys optional)
 
 ### Directory Structure & Key Files
-- `src/components/` – React UI components (UserManager, ChatInterface, etc.)
-- `src/app/api/` – Next.js API routes (proxy pattern)
-- `src/types/`, `src/lib/` – Shared types/utilities
-- `python-service/app/` – Core AI logic
-- `python-service/tools/` – AI tools (OpenAI, search, etc.)
-- `python-service/storage/` – Data persistence (users, sessions)
-- `python-service/personas/` – Persona prompt files
-- `python-service/main.py` – FastAPI entry point
-- `model_list_functional.csv`, `python-service/pytorch_models.json` – Model registry/configs
 
 ## Developer Workflow
-- **Setup:**
   - Always activate the existing virtualenv: `source ../chatbot_env/bin/activate`
   - Use `./setup-dev.sh` for unified install (Node + Python)
-- **Start Dev Servers:**
   - `npm run dev` (runs both Next.js and Python service)
   - `npm run dev:next` (Next.js only)
   - `npm run dev:python` (Python only)
-- **Build/Deploy:**
   - `npm run build` → `npm start` (production)
   - Docker: see `docker-compose.yml`
-- **Testing:**
   - `./test-setup.sh` (integration)
   - `python python-service/test_enhanced.py` (backend)
   - `./comprehensive-test.sh` (full stack)
 
 ## Project-Specific Conventions
-- **Frontend:**
   - Use business-style modals and admin panels (see `UserManager.tsx`)
   - API routes always proxy to Python endpoints for AI logic
   - Types in `src/types/`, utilities in `src/lib/`
-- **Backend:**
   - All new AI tools go in `python-service/tools/` and are exposed via `main.py`
   - Model configs in `python-service/pytorch_models.json` and `model_list_functional.csv`
   - Persona files in `python-service/personas/` (one persona per file)
-- **Integration:**
   - All communication is internal (no CORS)
   - API endpoints: `/api/python/*` (Next.js proxy) → Python microservice
   - Health check: `/api/python/health`
@@ -59,16 +35,8 @@ Ashley AI Unified is a full-stack Next.js app with an integrated Python FastAPI 
   - Internet search: `/api/python/internet/*`
 
 ## Models & Local Model Patterns
-- Supports both PyTorch and GGUF models (see `python-service/pytorch_models.json`)
-- Model registry and CSV export in `model_list_functional.csv`
-- Local models stored in `/opt/ashley-ai/models/` (see tutorial docs)
-- Quantization and hardware requirements documented in `docs/TUTORIAL_08A_LOCAL_MODELS_OVERVIEW.md`
 
 ## Integration Points & External Dependencies
-- **Virtualenv:** Always use `../chatbot_env/` (never create new)
-- **API Keys:** For enhanced search, set `GOOGLE_API_KEY`, `BING_API_KEY` as env vars
-- **Redis:** Optional for caching (`REDIS_URL`)
-- **OpenAI:** API key required for GPT features
 
 ## Example: Adding a New AI Tool
 1. Add Python logic to `python-service/tools/`
@@ -77,16 +45,9 @@ Ashley AI Unified is a full-stack Next.js app with an integrated Python FastAPI 
 4. Update frontend to call new API route
 
 ## Troubleshooting & Testing
-- Use `./test-setup.sh` for environment checks
-- Backend: run `python python-service/test_enhanced.py`
-- For integration issues, check API proxy logic in `src/app/api/`
-- See `docs/TUTORIAL_05_TESTING_TROUBLESHOOTING.md` for common issues
 
 ## References
-- See `README.md` (root, python-service/, docs/) for architecture, setup, and workflow details
-- See `docs/` for step-by-step tutorials and advanced features
 
----
 **Feedback:** If any section is unclear or missing, please specify so it can be improved for future AI agents.
 **Feedback:** If any section is unclear or missing, please specify so it can be improved for future AI agents.
 # Ashley AI Unified - Copilot Instructions
