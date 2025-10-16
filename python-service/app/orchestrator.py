@@ -167,6 +167,9 @@ class ChatOrchestrator:
         state.last_error = None
         moderation_result = self._handle_moderation(state, user_text)
 
+        # Ensure session metadata persisted before processing
+        self.session_store.ensure_session(state)
+
         history_message_count = len(state.messages)
         routing_context = build_routing_context(
             text=user_text,
