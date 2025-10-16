@@ -16,6 +16,10 @@ from app.persona_registry import (
     MODEL_CATEGORIES,
     get_persona_categories,
     persona_payload,
+    persona_metadata_dict,
+    refresh_persona_cache,
+    remove_persona,
+    upsert_persona,
 )
 from core.enhanced_chat_engine import get_enhanced_chat_engine
 from core.pytorch_manager import get_pytorch_manager
@@ -120,6 +124,37 @@ class PersonaCatalogResponse(BaseModel):
     persona_categories: Dict[str, Dict[str, str]]
     model_categories: Dict[str, Dict[str, str]]
     warning: Optional[str] = None
+
+
+class PersonaDefinition(BaseModel):
+    id: str
+    label: str
+    files: List[str]
+    description: str
+    tags: List[str]
+    category: str
+    nsfw: bool = False
+    default_model: str = "auto"
+    allowed_model_categories: List[str] = Field(default_factory=list)
+    allowed_model_ids: Optional[List[str]] = None
+
+
+class PersonaMutationRequest(BaseModel):
+    action: Literal["create", "update", "delete"]
+    persona: Optional[PersonaDefinition] = None
+    persona_id: Optional[str] = None
+
+    @root_validator
+    def validate_payload(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        action = values.get("action")
+        persona = values.get("persona")
+        persona_id = values.get("persona_id") or (persona.id if persona else None)
+        if action in {"create", "update"} and not persona:
+            raise ValueError("persona payload required for create/update actions")
+        if action == "delete" and not persona_id:
+            raise ValueError("persona_id required for delete action")
+        values["persona_id"] = persona_id
+        return values
 
 
 class ModelSwitchRequest(BaseModel):
@@ -333,6 +368,37 @@ async def proxy_personas():
     except Exception:
         logger.exception("Proxy personas error")
         raise _http_error(500, "PERSONA_CATALOG_FAILED", "Unable to retrieve personas.")
+
+
+@router.post("/personas", response_model=PersonaCatalogResponse)
+async def mutate_persona(request: PersonaMutationRequest):
+    try:
+        if request.action in {"create", "update"}:
+            definition = request.persona
+            assert definition is not None
+            await asyncio.to_thread(
+                upsert_persona,
+                definition.dict(),
+                True,
+            )
+        elif request.action == "delete":
+            assert request.persona_id is not None
+            await asyncio.to_thread(remove_persona, request.persona_id, True)
+
+        refresh_persona_cache(force=True)
+
+        pytorch_manager = get_pytorch_manager()
+        models = await asyncio.to_thread(pytorch_manager.list_available_models)
+        personas = await asyncio.to_thread(persona_payload, models)
+        return PersonaCatalogResponse(
+            personas=personas,
+            models=models,
+            persona_categories=get_persona_categories(),
+            model_categories=MODEL_CATEGORIES,
+        )
+    except Exception:
+        logger.exception("Persona mutation failed")
+        raise _http_error(500, "PERSONA_MUTATION_FAILED", "Unable to mutate persona definition.")
 
 
 @router.post("/image", response_model=ImageGenerationResponse)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Dict, List, Optional
 
 from app.personas import load_persona_bundle
@@ -13,6 +14,17 @@ from tools.search import web_search
 from tools.tokenizer import safe_truncate_messages
 
 logger = logging.getLogger(__name__)
+
+_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]")
+
+
+def sanitize_tool_output(text: str, max_chars: int = 2000) -> str:
+    """Clamp length and remove control characters / dangerous tags."""
+    cleaned = _CONTROL_CHARS.sub("", text)
+    cleaned = cleaned.replace("<script", "&lt;script")
+    if len(cleaned) > max_chars:
+        cleaned = cleaned[: max_chars - 3] + "..."
+    return cleaned
 
 
 class ContextBuilder:
@@ -47,7 +59,8 @@ class ContextBuilder:
                 if results:
                     lines = ["# Web Search", f"Query: {query}"]
                     for item in results:
-                        lines.append(f"- {item.title}: {item.snippet} ({item.url})")
+                        snippet = sanitize_tool_output(item.snippet, 480)
+                        lines.append(f"- {item.title}: {snippet} ({item.url})")
                     sections.append("\n".join(lines))
 
         if "code" in tools and trimmed.startswith("!run"):
@@ -60,10 +73,11 @@ class ContextBuilder:
                 try:
                     result = exec_code(code)
                     code_output = format_code_result(result)
+                    code_output = sanitize_tool_output(code_output, 2000)
                 except Exception as exc:
                     logger.error("Code execution failed: %s", exc, exc_info=True)
                     result = None
-                    code_output = str(exc)
+                    code_output = sanitize_tool_output(str(exc), 512)
                 section_lines = ["# Code Execution", "```text", code_output, "```"]
                 snapshot = getattr(result, "globals_snapshot", {}) if result else {}
                 for name, value in snapshot.items():

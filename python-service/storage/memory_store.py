@@ -35,6 +35,15 @@ class MemoryStore:
                 "INSERT INTO memory_short (session_id, role, content) VALUES (?, ?, ?)",
                 (session_id, role, content),
             )
+            conn.execute(
+                """
+                DELETE FROM memory_short
+                WHERE session_id = ? AND id NOT IN (
+                    SELECT id FROM memory_short WHERE session_id = ? ORDER BY id DESC LIMIT 50
+                )
+                """,
+                (session_id, session_id),
+            )
 
     def get_short_term(self, session_id: str, limit: int = 20) -> List[Dict[str, Any]]:
         with get_connection() as conn:
@@ -64,6 +73,19 @@ class MemoryStore:
             conn.execute(
                 "INSERT OR REPLACE INTO memory_vectors (memory_id, vector) VALUES (?, ?)",
                 (memory_id, vector.tobytes()),
+            )
+            conn.execute(
+                """
+                DELETE FROM memory_long
+                WHERE session_id = ?
+                AND id NOT IN (
+                    SELECT id FROM memory_long WHERE session_id = ? ORDER BY id DESC LIMIT 200
+                )
+                """,
+                (entry.session_id, entry.session_id),
+            )
+            conn.execute(
+                "DELETE FROM memory_vectors WHERE memory_id NOT IN (SELECT id FROM memory_long)"
             )
 
     def search_long_term(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
