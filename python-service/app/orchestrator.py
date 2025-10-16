@@ -3,20 +3,16 @@ from __future__ import annotations
 import logging
 from typing import Dict, Generator, List, Optional
 
-from app.config import ModerationAction, get_settings
-from app.moderation import ModerationResult, evaluate_text, get_moderation_controller
-from app.personas import load_persona_bundle
-from app.router import RoutingContext, build_routing_context, select_model
+from app.config import get_settings
+from app.moderation import ModerationResult
+from app.router import build_routing_context, select_model
+from app.services.context_builder import ContextBuilder
+from app.services.moderation_service import ModerationService
 from app.state import Attachment, ChatState
 from storage.memory_store import MemoryEntry, get_memory_store
 from storage.session_store import SessionStore
 from storage.usage_tracker import get_usage_tracker
-from tools.file_qna import get_fileqa_manager
 from tools.openai_client import StreamChunk, StreamResult, complete_response, stream_response
-from tools.tokenizer import safe_truncate_messages
-from tools.search import web_search
-from tools.code_executor import execute as exec_code, format_result as format_code_result
-from tools.data_viz import dataframe_to_html
 
 logger = logging.getLogger(__name__)
 
@@ -30,131 +26,13 @@ class ModerationError(RuntimeError):
 class ChatOrchestrator:
     def __init__(self) -> None:
         self.settings = get_settings()
-        controller = get_moderation_controller()
-        self.moderation_controller = controller
+        self.moderation_service = ModerationService()
         self.memory_store = get_memory_store()
         self.fileqa_manager = get_fileqa_manager()
         self.usage_tracker = get_usage_tracker()
-        sessions_dir = controller.settings.data_dir / "sessions"
-        self.session_store = SessionStore(sessions_dir)
+        self.session_store = SessionStore()
         self.max_prompt_tokens = min(6000, self.settings.max_output_tokens * 4)
-
-    def _build_context(self, session_id: str, user_text: str, tools: List[str]) -> str:
-        if "file_qna" in tools:
-            return self.fileqa_manager.build_context(session_id, user_text)
-        return ""
-
-    def _tool_context(self, state: ChatState, user_text: str, tools: List[str]) -> str:
-        sections: List[str] = []
-        trimmed = user_text.strip()
-        if "search" in tools:
-            query = None
-            if trimmed.startswith("/search"):
-                query = trimmed[len("/search") :].strip() or user_text
-            elif len(user_text) > 220:
-                query = user_text
-            if query:
-                try:
-                    results = web_search(query, provider=state.search_provider, max_results=4)
-                except Exception as exc:  # pragma: no cover - network failure path
-                    logger.warning("Search failed: %s", exc)
-                    results = []
-                if results:
-                    lines = ["# Web Search", f"Query: {query}"]
-                    for item in results:
-                        lines.append(f"- {item.title}: {item.snippet} ({item.url})")
-                    sections.append("\n".join(lines))
-        if "code" in tools and trimmed.startswith("!run"):
-            code = trimmed[len("!run") :].strip()
-            if not code and "```" in user_text:
-                start = user_text.find("```") + 3
-                end = user_text.rfind("```")
-                code = user_text[start:end].strip()
-            if code:
-                result = exec_code(code)
-                code_output = format_code_result(result)
-                section_lines = ["# Code Execution", "```text", code_output, "```"]
-                for name, value in result.globals_snapshot.items():
-                    try:
-                        import pandas as pd  # type: ignore
-
-                        if isinstance(value, pd.DataFrame):
-                            section_lines.append(f"## DataFrame: {name}")
-                            section_lines.append(dataframe_to_html(value))
-                    except Exception:  # pragma: no cover - optional dependency
-                        continue
-                sections.append("\n".join(section_lines))
-        return "\n\n".join(sections)
-
-    def _memory_context(self, state: ChatState, user_text: str) -> str:
-        if not state.memory_enabled:
-            return ""
-        short_term = self.memory_store.get_short_term(state.session_id)
-        lines = []
-        if short_term:
-            lines.append("# Short Term Memory")
-            for item in short_term[-5:]:
-                lines.append(f"- {item['role']}: {item['content']}")
-        search_hits = self.memory_store.search_long_term(user_text)
-        if search_hits:
-            lines.append("# Long Term Memory")
-            for hit in search_hits:
-                lines.append(f"- {hit['content']}")
-        return "\n".join(lines)
-
-    def _prepare_messages(
-        self,
-        state: ChatState,
-        user_text: str,
-        context_text: str,
-        memory_text: str,
-        model: str,
-    ) -> List[Dict]:
-        persona_context = load_persona_bundle(state.persona_names)
-        history_plain = [
-            {"role": msg.get("role", "user"), "content": msg.get("content", "")}
-            for msg in state.messages
-        ]
-        history_plain.append({"role": "user", "content": user_text})
-        truncated = safe_truncate_messages(history_plain, model, self.max_prompt_tokens)
-        formatted: List[Dict] = [
-            {
-                "role": "system",
-                "content": [{"type": "input_text", "text": persona_context}],
-            }
-        ]
-        if context_text:
-            formatted.append(
-                {
-                    "role": "system",
-                    "content": [{"type": "input_text", "text": context_text}],
-                }
-            )
-        if memory_text:
-            formatted.append(
-                {
-                    "role": "system",
-                    "content": [{"type": "input_text", "text": memory_text}],
-                }
-            )
-        for message in truncated:
-            role = message.get("role", "user")
-            content_type = "output_text" if role == "assistant" else "input_text"
-            formatted.append(
-                {
-                    "role": role,
-                    "content": [{"type": content_type, "text": message.get("content", "")}],
-                }
-            )
-        return formatted
-
-    def _handle_moderation(self, state: ChatState, user_text: str) -> ModerationResult:
-        if not state.moderation_enabled:
-            return ModerationResult(ModerationAction.ALLOW, False, {}, {})
-        result = evaluate_text(state.session_id, user_text)
-        if result.action == ModerationAction.BLOCK:
-            raise ModerationError(result)
-        return result
+        self.context_builder = ContextBuilder(self.memory_store, self.fileqa_manager)
 
     def stream_reply(
         self,
@@ -165,7 +43,10 @@ class ChatOrchestrator:
         attachments = attachments or []
         state.attachments.extend(attachments)
         state.last_error = None
-        moderation_result = self._handle_moderation(state, user_text)
+        moderation_outcome = self.moderation_service.evaluate(state, user_text)
+        if moderation_outcome.blocked:
+            raise ModerationError(moderation_outcome.result)
+        moderation_result = moderation_outcome.result
 
         # Ensure session metadata persisted before processing
         self.session_store.ensure_session(state)
@@ -190,8 +71,12 @@ class ChatOrchestrator:
             len(user_text),
         )
 
-        context_text = self._build_context(state.session_id, user_text, model_choice.tools)
-        tool_text = self._tool_context(state, user_text, model_choice.tools)
+        context_text = self.context_builder.build_file_context(
+            state.session_id,
+            user_text,
+            list(model_choice.tools),
+        )
+        tool_text = self.context_builder.build_tool_context(state, user_text, list(model_choice.tools))
         if tool_text:
             context_text = (context_text + "\n\n" + tool_text).strip() if context_text else tool_text
         trimmed = user_text.strip()
@@ -202,7 +87,7 @@ class ChatOrchestrator:
         else:
             user_payload = user_text
 
-        memory_text = self._memory_context(state, user_payload)
+        memory_text = self.context_builder.build_memory_context(state, user_payload)
 
         # Append user message to state and persistence before streaming
         attachment_payload = [att.__dict__ for att in attachments]
@@ -222,7 +107,14 @@ class ChatOrchestrator:
         if state.memory_enabled:
             self.memory_store.append_short_term(state.session_id, "user", user_text)
 
-        messages = self._prepare_messages(state, user_payload, context_text, memory_text, model_choice.model)
+        messages = self.context_builder.prepare_messages(
+            state,
+            user_payload,
+            context_text,
+            memory_text,
+            model_choice.model,
+            self.max_prompt_tokens,
+        )
 
         def _finalize_response(assistant_text: str, result: StreamResult) -> Dict[str, any]:
             state.add_message(
