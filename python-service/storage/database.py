@@ -78,6 +78,11 @@ def _initialise_schema(conn: sqlite3.Connection) -> None:
                 tags_json TEXT,
                 created_at REAL DEFAULT (strftime('%s','now'))
             );
+
+            CREATE TABLE IF NOT EXISTS memory_vectors (
+                memory_id INTEGER PRIMARY KEY REFERENCES memory_long(id) ON DELETE CASCADE,
+                vector BLOB NOT NULL
+            );
             """
         )
 
