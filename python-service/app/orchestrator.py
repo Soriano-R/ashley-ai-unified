@@ -52,28 +52,29 @@ class ChatOrchestrator:
         # Ensure session metadata persisted before processing
         self.session_store.ensure_session(state)
 
-        history_message_count = len(state.messages)
-        routing_context = build_routing_context(
-            text=user_text,
-            persona_names=state.persona_names,
-            attachments=state.attachments,
-            history_message_count=history_message_count,
-            override_model=state.model_override,
-            force_vision=any(att.type == "image" for att in attachments),
-            temperature=state.temperature,
-        )
-        # Persona-based model override
+        # Persona-based model override (compute before building context)
         persona_model_map = {
             "Ashley_NSFW": "llama-3.1-8b-instruct",
             "Ashley_SFW": "gpt-4o-mini",
             # Add more persona-model mappings as needed
         }
+        override_model = None
         for persona in state.persona_names:
             if persona in persona_model_map:
-                state.model_override = persona_model_map[persona]
-                break  # Use first matching persona
-        else:
-            state.model_override = None  # No override if no mapping found
+                override_model = persona_model_map[persona]
+                break
+
+        routing_context = build_routing_context(
+            text=user_text,
+            persona_names=state.persona_names,
+            attachments=state.attachments,
+            history_message_count=state.history_message_count,
+            override_model=override_model,  # use the computed override
+            force_vision=any(att.type == "image" for att in attachments),
+            temperature=state.temperature,
+        )
+        # update state for consistency (optional)
+        state.model_override = override_model
 
         model_choice = select_model(routing_context)
         state.active_model = model_choice.model
