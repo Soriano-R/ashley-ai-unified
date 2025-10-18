@@ -37,21 +37,90 @@ class EnhancedChatEngine:
         self.context_history: List[Dict] = []
         self.max_context_length = 4000
 
-        # Initialize with default model (disabled for faster startup - models load on-demand)
-        # self._load_default_model()
-    
-    def _load_default_model(self):
-        """Load default PyTorch model"""
+        # Load persona-to-model mapping
+        self.persona_model_mapping = self._load_persona_model_mapping()
+
+    def _load_persona_model_mapping(self) -> Dict:
+        """Load persona to model mapping configuration"""
         try:
-            # Get default model from config
-            default_model = self.pytorch_manager.config.get("default_model", None)
-            if default_model:
-                logger.info(f"Loading default model: {default_model}")
-                self.pytorch_manager.load_model(default_model)
+            import json
+            from pathlib import Path
+            mapping_file = Path(__file__).parent.parent / "persona_model_mapping.json"
+            if mapping_file.exists():
+                with open(mapping_file, 'r') as f:
+                    return json.load(f)
             else:
-                logger.warning("No default model configured")
+                logger.warning(f"Persona model mapping file not found: {mapping_file}")
+                return {"mappings": {}, "fallback_chain": ["local_pytorch", "local_gguf", "api"]}
         except Exception as e:
-            logger.error(f"Error loading default model: {e}")
+            logger.error(f"Error loading persona model mapping: {e}")
+            return {"mappings": {}, "fallback_chain": ["local_pytorch", "local_gguf", "api"]}
+
+    def _select_model_for_persona(self, persona_id: str, requested_model_id: Optional[str] = None) -> str:
+        """
+        Select the best model for a persona (local-first, API fallback)
+
+        Args:
+            persona_id: Persona identifier (e.g., 'ashley-girlfriend')
+            requested_model_id: Optional explicitly requested model
+
+        Returns:
+            Selected model ID
+        """
+        # If model explicitly requested, use it
+        if requested_model_id and requested_model_id != "auto":
+            logger.info(f"Using explicitly requested model: {requested_model_id}")
+            return requested_model_id
+
+        # Get persona mapping
+        persona_mapping = self.persona_model_mapping.get("mappings", {}).get(persona_id, {})
+
+        if not persona_mapping:
+            # Use default model from environment
+            default_model = os.getenv("DEFAULT_MODEL", "nous-hermes-2-mistral-7b-gptq")
+            logger.info(f"No mapping for persona {persona_id}, using default: {default_model}")
+            return default_model
+
+        # Try primary model first
+        primary_model = persona_mapping.get("primary")
+        if primary_model and self._is_model_available(primary_model):
+            logger.info(f"Using primary model for {persona_id}: {primary_model}")
+            return primary_model
+
+        # Try alternatives
+        for alt_model in persona_mapping.get("alternatives", []):
+            if self._is_model_available(alt_model):
+                logger.info(f"Using alternative model for {persona_id}: {alt_model}")
+                return alt_model
+
+        # Use fallback (API model)
+        fallback = persona_mapping.get("fallback", "openai")
+        logger.info(f"Using fallback model for {persona_id}: {fallback}")
+        return fallback
+
+    def _is_model_available(self, model_id: str) -> bool:
+        """Check if a model is available (exists in model registry)"""
+        return model_id in self.pytorch_manager.models
+
+    def preload_models(self, model_ids: List[str]):
+        """
+        Preload specified PyTorch models at startup
+
+        Args:
+            model_ids: List of model IDs to preload (e.g., ['openhermes-2.5-mistral-7b-gptq'])
+        """
+        if not model_ids:
+            logger.info("No models configured for preloading")
+            return
+
+        logger.info(f"Preloading {len(model_ids)} model(s): {', '.join(model_ids)}")
+        for model_id in model_ids:
+            try:
+                logger.info(f"Preloading model: {model_id}")
+                self.pytorch_manager.load_model(model_id)
+                logger.info(f"Successfully preloaded model: {model_id}")
+            except Exception as e:
+                logger.error(f"Failed to preload model {model_id}: {e}")
     
     def _detect_internet_need(self, message: str) -> bool:
         """Detect if message requires internet search"""
@@ -90,20 +159,24 @@ class EnhancedChatEngine:
         models_catalog = self.pytorch_manager.list_available_models()
         allowed_models = resolve_allowed_model_ids(persona_meta, models_catalog)
 
-        selected = requested_model or persona_meta.default_model
-        if selected and selected != "auto":
-            if selected in allowed_models:
-                return selected, allowed_models
-            logger.warning(
-                "Requested model %s not allowed for persona %s; falling back to auto.",
-                selected,
-                persona_meta.id,
-            )
+        # LOCAL-FIRST: Use persona-based model selection
+        selected = self._select_model_for_persona(persona_meta.id, requested_model)
 
-        # Choose first non-auto allowed model
+        # Verify selected model is allowed
+        if selected in allowed_models:
+            logger.info(f"✓ Selected LOCAL model '{selected}' for persona '{persona_meta.id}'")
+            return selected, allowed_models
+
+        # If not in allowed list, try to find first available local model (not API)
         for candidate in allowed_models:
-            if candidate != "auto":
+            if candidate != "auto" and candidate != "openai":
+                logger.info(f"✓ Fallback to available LOCAL model: '{candidate}'")
                 return candidate, allowed_models
+
+        # Last resort: use API model if no local models available
+        if "openai" in allowed_models:
+            logger.warning(f"⚠ No local models available, using API fallback: openai")
+            return "openai", allowed_models
 
         # Fallback to global default
         return self.pytorch_manager.config.get("default_model"), allowed_models
@@ -287,19 +360,19 @@ Be helpful, engaging, and maintain the personality characteristics of {persona_l
                     response_data["model_used"] = "fallback"
                     response_data["error"] = f"PyTorch error: {str(e)}"
             elif self.pytorch_manager.models.get("openai", {}).get("loaded", False):
-                # Use OpenAI API for response
+                # Use OpenAI API for response (OpenAI 1.0+ API)
                 try:
-                    import openai
-                    openai.api_key = os.getenv('OPENAI_API_KEY')
+                    from openai import OpenAI
+                    client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
                     completion = await asyncio.to_thread(
-                        openai.ChatCompletion.create,
+                        client.chat.completions.create,
                         model=self.pytorch_manager.models['openai']['config']['model_name'],
                         messages=[{"role": "user", "content": enhanced_prompt}],
                         max_tokens=generation_kwargs.get('max_new_tokens', 1024),
                         temperature=generation_kwargs.get('temperature', 0.7),
                         top_p=generation_kwargs.get('top_p', 0.9),
                     )
-                    response_text = completion.choices[0].message['content']
+                    response_text = completion.choices[0].message.content
                     response_data["response"] = response_text
                     response_data["model_used"] = selected_model_id or "openai"
                 except Exception as e:

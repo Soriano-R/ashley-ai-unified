@@ -158,26 +158,6 @@
       "categories": ["ml-ai"],
       "capabilities": ["coding"]
     },
-    "deepseek-r1": {
-      "model_name": "deepseek-ai/DeepSeek-R1",
-      "display_name": "DeepSeek R1",
-      "max_length": 8192,
-      "quantization": "pytorch",
-      "format": "pytorch",
-      "description": "Reasoning focused research model for advanced problem solving.",
-      "categories": ["ml-ai", "general"],
-      "capabilities": ["reasoning", "analysis"]
-    },
-    "deepseek-r1-gguf": {
-      "model_name": "deepseek-ai/DeepSeek-R1-GGUF",
-      "display_name": "DeepSeek R1 (GGUF)",
-      "max_length": 8192,
-      "quantization": "gguf",
-      "format": "gguf",
-      "description": "GGUF quantised DeepSeek R1.",
-      "categories": ["ml-ai", "general"],
-      "capabilities": ["reasoning", "analysis"]
-    },
     "undiopenhermes-7b": {
       "model_name": "Undi95/UndiOpenHermes-2.5-Mistral-7B",
       "display_name": "UndiOpenHermes 7B",

@@ -93,6 +93,18 @@ def create_app() -> FastAPI:
         from app.orchestrator import ChatOrchestrator
         orchestrator = ChatOrchestrator()
         logger.info("ChatOrchestrator initialized successfully")
+
+        # Preload models if configured
+        preload_models = os.getenv("PRELOAD_MODELS", "").strip()
+        if preload_models:
+            model_list = [m.strip() for m in preload_models.split(",") if m.strip()]
+            if model_list and ENHANCED_FEATURES_AVAILABLE:
+                logger.info(f"Preloading {len(model_list)} models from PRELOAD_MODELS environment variable")
+                from core.enhanced_chat_engine import get_enhanced_chat_engine
+                chat_engine = get_enhanced_chat_engine()
+                chat_engine.preload_models(model_list)
+        else:
+            logger.info("No models configured for preloading (PRELOAD_MODELS is empty)")
     except Exception as e:
         logger.error(f"Failed to initialize ChatOrchestrator: {e}")
         orchestrator = None

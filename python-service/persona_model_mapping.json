@@ -1,0 +1,71 @@
+{
+  "description": "Persona to Model Mapping Configuration",
+  "priority": "local_first",
+  "fallback_chain": ["local_pytorch", "local_gguf", "api"],
+  "mappings": {
+    "ashley-girlfriend": {
+      "primary": "nous-hermes-2-mistral-7b-gptq",
+      "alternatives": [
+        "openhermes-2.5-mistral-7b-gptq",
+        "nous-hermes-2-mistral-7b-gptq-gguf",
+        "mistral-7b"
+      ],
+      "fallback": "openai",
+      "description": "Warm, conversational model for relationship chat"
+    },
+    "ashley-girlfriend-explicit": {
+      "primary": "undiopenhermes-7b",
+      "alternatives": [
+        "undiopenhermes-7b-gguf",
+        "undiplatypus2-13b-gptq"
+      ],
+      "fallback": "openai",
+      "description": "Uncensored model for explicit relationship chat"
+    },
+    "ashley-data-analyst": {
+      "primary": "qwen-2.5-7b",
+      "alternatives": [
+        "qwen-2.5-7b-gguf",
+        "mistral-7b",
+        "llama-3.1-70b"
+      ],
+      "fallback": "openai",
+      "description": "Analytical model for data analysis tasks"
+    },
+    "ashley-data-scientist": {
+      "primary": "deepseek-coder-v2",
+      "alternatives": [
+        "code-llama-13b",
+        "deepseek-coder-v2-gguf",
+        "code-llama-13b-gguf"
+      ],
+      "fallback": "openai",
+      "description": "ML/AI focused model for data science and coding"
+    }
+  },
+  "model_preferences": {
+    "gpu_available": {
+      "prefer": "pytorch",
+      "quantization": "gptq"
+    },
+    "cpu_only": {
+      "prefer": "gguf",
+      "quantization": "q4_k_m"
+    }
+  },
+  "recommended_preload": {
+    "minimal": ["nous-hermes-2-mistral-7b-gptq"],
+    "standard": [
+      "nous-hermes-2-mistral-7b-gptq",
+      "openhermes-2.5-mistral-7b-gptq",
+      "qwen-2.5-7b"
+    ],
+    "full": [
+      "nous-hermes-2-mistral-7b-gptq",
+      "openhermes-2.5-mistral-7b-gptq",
+      "qwen-2.5-7b",
+      "undiopenhermes-7b",
+      "code-llama-13b"
+    ]
+  }
+}
