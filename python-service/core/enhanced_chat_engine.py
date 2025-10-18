@@ -36,9 +36,9 @@ class EnhancedChatEngine:
         self.current_persona = "ashley-girlfriend"
         self.context_history: List[Dict] = []
         self.max_context_length = 4000
-        
-        # Initialize with default model
-        self._load_default_model()
+
+        # Initialize with default model (disabled for faster startup - models load on-demand)
+        # self._load_default_model()
     
     def _load_default_model(self):
         """Load default PyTorch model"""

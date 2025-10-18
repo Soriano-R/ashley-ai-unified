@@ -11,6 +11,9 @@ matplotlib
 soundfile
 fpdf2
 pytest
+bcrypt>=4.0.0
+fastapi
+uvicorn
 
 # PyTorch and ML libraries
 torch>=2.0.0

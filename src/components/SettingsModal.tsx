@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { sanitizeExportData, canUserExport, logExportAttempt } from "../utils/exportSecurity"
+import { sanitizeExportData, canUserExport, logExportAttempt } from "../lib/exportSecurity"
 import { Message, Session, User } from "../types"
 import MemoryManager from './MemoryManager'
 

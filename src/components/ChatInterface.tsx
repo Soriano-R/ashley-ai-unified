@@ -539,32 +539,14 @@ export default function ChatInterface() {
       if (account && account.password === password) {
         setCurrentUser(account.user)
         setIsAuthenticated(true)
-        if (account.user.role === 'admin') {
-          setSessions([
-            {
-              id: '1',
-              title: 'Admin Dashboard',
-              messages: [],
-              personaId: currentPersonaId,
-              modelId: currentModelId,
-            },
-            {
-              id: '2',
-              title: 'System Management',
-              messages: [],
-              personaId: currentPersonaId,
-              modelId: currentModelId,
-            }
-          ])
-        } else {
-          setSessions([{
-            id: '1',
-            title: 'New Chat',
-            messages: [],
-            personaId: currentPersonaId,
-            modelId: currentModelId,
-          }])
-        }
+        // All users start with a single new chat session
+        setSessions([{
+          id: '1',
+          title: 'New Chat',
+          messages: [],
+          personaId: currentPersonaId,
+          modelId: currentModelId,
+        }])
         return
       }
       throw new Error('Invalid email or password')

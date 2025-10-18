@@ -12,10 +12,14 @@ out/
 .env
 .env.local
 .env.production.local
+.env.backup
 
 # IDE
 .vscode/
 .idea/
+
+# Claude Code local settings
+.claude/settings.local.json
 
 # OS
 .DS_Store

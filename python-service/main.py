@@ -122,14 +122,19 @@ def create_app() -> FastAPI:
             content={"error": "Deprecated. Use /api/chat/models for model listing."}
         )
     
-    import hashlib
+    import bcrypt
     import json
     from pathlib import Path
 
     USERS_FILE = Path(__file__).parent / "storage" / "users.json"
 
     def hash_password(password: str) -> str:
-        return hashlib.sha256(password.encode()).hexdigest()
+        """Hash password using bcrypt with salt"""
+        return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+    def verify_password(password: str, hashed: str) -> bool:
+        """Verify password against bcrypt hash"""
+        return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
 
     def load_users():
         if USERS_FILE.exists():
@@ -138,8 +143,9 @@ def create_app() -> FastAPI:
         return {}
 
     def save_users(users):
+        USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(USERS_FILE, "w") as f:
-            json.dump(users, f)
+            json.dump(users, f, indent=2)
 
     @app.post("/auth/register")
     async def register_user(request: Request):
@@ -165,7 +171,7 @@ def create_app() -> FastAPI:
         password = data.get("password")
         users = load_users()
         user = users.get(email)
-        if not user or user["password"] != hash_password(password):
+        if not user or not verify_password(password, user["password"]):
             raise HTTPException(status_code=401, detail="Invalid credentials")
         return {"valid": True, "user": {"id": email, "role": user["role"]}}
     

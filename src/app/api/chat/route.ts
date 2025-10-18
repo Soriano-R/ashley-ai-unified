@@ -5,8 +5,11 @@ const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || 'http://127.0.0.1:8
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    
-    // Proxy to Python microservice
+
+    // Proxy to Python microservice with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
     const response = await fetch(`${PYTHON_SERVICE_URL}/api/chat`, {
       method: 'POST',
       headers: {
@@ -14,7 +17,10 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify(body),
       cache: 'no-store',
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
     
     if (!response.ok) {
       throw new Error(`Python service error: ${response.status}`);
