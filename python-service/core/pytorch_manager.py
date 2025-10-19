@@ -393,24 +393,27 @@ class PyTorchModelManager:
         if top_p:
             gen_config["top_p"] = top_p
         gen_config.update(kwargs)
-        
+
+        # Set pad_token_id if not already set
+        if gen_config.get("pad_token_id") is None:
+            gen_config["pad_token_id"] = self.current_tokenizer.eos_token_id
+
         try:
             # Tokenize input
             inputs = self.current_tokenizer(
-                prompt, 
+                prompt,
                 return_tensors="pt",
                 truncation=True,
                 max_length=2048
             ).to(self.device)
-            
+
             # Generate
             if torch is None:
                 raise RuntimeError("PyTorch is not available; cannot run inference.")
             with torch.no_grad():
                 outputs = self.current_model.generate(
                     **inputs,
-                    **gen_config,
-                    pad_token_id=self.current_tokenizer.eos_token_id
+                    **gen_config
                 )
             
             # Decode response
