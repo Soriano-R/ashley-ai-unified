@@ -199,7 +199,7 @@
       "capabilities": ["nsfw"]
     },
     "nous-hermes-7b-gptq": {
-      "model_name": "TheBloke/Nous-Hermes-2-Mistral-7B-GPTQ",
+      "model_name": "NousResearch/Nous-Hermes-2-Mistral-7B-DPO",
       "display_name": "Nous Hermes 7B GPTQ",
       "max_length": 8192,
       "quantization": "pytorch",
@@ -209,7 +209,7 @@
       "capabilities": ["nsfw"]
     },
     "nous-hermes-7b-gptq-gguf": {
-      "model_name": "TheBloke/Nous-Hermes-2-Mistral-7B-GPTQ-GGUF",
+      "model_name": "NousResearch/Nous-Hermes-2-Mistral-7B-DPO-GGUF",
       "display_name": "Nous Hermes 7B GPTQ (GGUF)",
       "max_length": 8192,
       "quantization": "gguf",
@@ -279,8 +279,8 @@
       "capabilities": ["nsfw"]
     },
     "openai": {
-      "model_name": "openai/gpt-3.5-turbo",
-      "display_name": "OpenAI GPT-3.5 Turbo",
+      "model_name": "gpt-4o-mini",
+      "display_name": "OpenAI GPT-4o Mini",
       "max_length": 4096,
       "quantization": "api",
       "format": "api",
@@ -289,7 +289,7 @@
       "capabilities": ["general"]
     }
   },
-  "default_model": "qwen-2.5-7b",
+  "default_model": "mistral-7b",
   "inference_config": {
     "max_new_tokens": 1024,
     "temperature": 0.7,
