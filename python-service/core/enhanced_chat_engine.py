@@ -100,7 +100,8 @@ class EnhancedChatEngine:
 
     def _is_model_available(self, model_id: str) -> bool:
         """Check if a model is available (exists in model registry)"""
-        return model_id in self.pytorch_manager.models
+        # Check if model exists in config (not just loaded models)
+        return model_id in self.pytorch_manager.config.get("models", {})
 
     def preload_models(self, model_ids: List[str]):
         """
