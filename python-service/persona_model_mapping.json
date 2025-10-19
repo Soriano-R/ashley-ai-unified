@@ -4,10 +4,10 @@
   "fallback_chain": ["local_pytorch", "local_gguf", "api"],
   "mappings": {
     "ashley-girlfriend": {
-      "primary": "nous-hermes-2-mistral-7b-gptq",
+      "primary": "nous-hermes-7b-gptq",
       "alternatives": [
-        "openhermes-2.5-mistral-7b-gptq",
-        "nous-hermes-2-mistral-7b-gptq-gguf",
+        "openhermes-7b-gptq",
+        "nous-hermes-7b-gptq-gguf",
         "mistral-7b"
       ],
       "fallback": "openai",
@@ -54,15 +54,15 @@
     }
   },
   "recommended_preload": {
-    "minimal": ["nous-hermes-2-mistral-7b-gptq"],
+    "minimal": ["nous-hermes-7b-gptq"],
     "standard": [
-      "nous-hermes-2-mistral-7b-gptq",
-      "openhermes-2.5-mistral-7b-gptq",
+      "nous-hermes-7b-gptq",
+      "openhermes-7b-gptq",
       "qwen-2.5-7b"
     ],
     "full": [
-      "nous-hermes-2-mistral-7b-gptq",
-      "openhermes-2.5-mistral-7b-gptq",
+      "nous-hermes-7b-gptq",
+      "openhermes-7b-gptq",
       "qwen-2.5-7b",
       "undiopenhermes-7b",
       "code-llama-13b"
