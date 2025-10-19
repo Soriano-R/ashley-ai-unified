@@ -4,11 +4,11 @@
   "fallback_chain": ["local_pytorch", "local_gguf", "api"],
   "mappings": {
     "ashley-girlfriend": {
-      "primary": "nous-hermes-7b-gptq",
+      "primary": "mistral-7b",
       "alternatives": [
-        "openhermes-7b-gptq",
-        "nous-hermes-7b-gptq-gguf",
-        "mistral-7b"
+        "qwen-2.5-7b",
+        "nous-hermes-7b-gptq",
+        "openhermes-7b-gptq"
       ],
       "fallback": "openai",
       "description": "Warm, conversational model for relationship chat"
