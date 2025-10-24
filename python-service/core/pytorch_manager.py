@@ -6,6 +6,8 @@ Handles loading, inference, and fine-tuning of PyTorch models
 import os
 import json
 import logging
+import signal
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Any
@@ -79,12 +81,21 @@ class PyTorchModelManager:
         """Determine the best device for inference"""
         if torch is None:
             return "cpu"
+
+        # Check environment variable to force CPU if needed
+        force_cpu = os.getenv("FORCE_CPU", "false").lower() == "true"
+        if force_cpu:
+            logger.info("FORCE_CPU enabled - using CPU")
+            return "cpu"
+
         if torch.cuda.is_available():
             gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
             logger.info(f"CUDA available - GPU memory: {gpu_memory:.1f}GB")
             return "cuda"
         elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            logger.info("MPS (Apple Silicon) available")
+            logger.info("MPS (Apple Silicon) available - using GPU acceleration")
+            # Set MPS fallback for compatibility
+            os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
             return "mps"
         else:
             logger.info("Using CPU")
@@ -307,10 +318,13 @@ class PyTorchModelManager:
 
             if torch is None:
                 raise RuntimeError("PyTorch is required for loading local models but is not available.")
-            preferred_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+            # Use float16 for CUDA and MPS, float32 for CPU only
+            use_float16 = torch.cuda.is_available() or (hasattr(torch.backends, 'mps') and torch.backends.mps.is_available())
+            preferred_dtype = torch.float16 if use_float16 else torch.float32
             base_kwargs = {
                 "device_map": "auto" if torch.cuda.is_available() else None,
                 "trust_remote_code": True,
+                "low_cpu_mem_usage": True,  # Optimize memory usage
             }
             if quantization_config:
                 base_kwargs["quantization_config"] = quantization_config
@@ -410,23 +424,30 @@ class PyTorchModelManager:
             # Generate
             if torch is None:
                 raise RuntimeError("PyTorch is not available; cannot run inference.")
+
+            logger.info(f"Starting generation with model on device: {self.device}")
             with torch.no_grad():
-                outputs = self.current_model.generate(
-                    **inputs,
-                    **gen_config
-                )
-            
+                try:
+                    outputs = self.current_model.generate(
+                        **inputs,
+                        **gen_config
+                    )
+                    logger.info("Generation completed successfully")
+                except Exception as gen_error:
+                    logger.error(f"Model.generate() failed: {gen_error}")
+                    raise RuntimeError(f"Model generation failed: {str(gen_error)}")
+
             # Decode response
             response = self.current_tokenizer.decode(
-                outputs[0][inputs['input_ids'].shape[1]:], 
+                outputs[0][inputs['input_ids'].shape[1]:],
                 skip_special_tokens=True
             )
-            
+
             return response.strip()
-            
+
         except Exception as e:
             logger.error(f"Error generating response: {e}")
-            return f"Error generating response: {str(e)}"
+            raise RuntimeError(f"PyTorch generation error: {str(e)}")
     
     def prepare_for_finetuning(
         self, 

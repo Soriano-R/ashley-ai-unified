@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
 
     // Proxy to Python microservice with timeout
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 300000); // 300 second timeout (5 minutes for local models)
 
     const response = await fetch(`${PYTHON_SERVICE_URL}/api/chat`, {
       method: 'POST',

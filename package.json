@@ -5,8 +5,8 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:next\" \"npm run dev:python\"",
     "dev:next": "next dev --turbopack",
-    "dev:python": "cd python-service && python main.py",
-    "backend": "cd python-service && python main.py",
+    "dev:python": "cd python-service && /Users/soriano/Documents/Project_New/chatbot_modular/chatbot_env/bin/python main.py",
+    "backend": "cd python-service && /Users/soriano/Documents/Project_New/chatbot_modular/chatbot_env/bin/python main.py",
     "build": "next build",
     "start": "next start",
     "start:next": "next start",
