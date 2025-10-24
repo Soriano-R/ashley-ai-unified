@@ -12,6 +12,7 @@ import UserManager from './UserManager'
 import { Message, ModelOption, PersonaOption, Session, User } from '@/types'
 import { DEFAULT_PERSONA_ID } from '@/lib/personas'
 import { apiClient } from '@/lib/apiClient'
+import { generateSmartTitle } from '@/lib/titleGenerator'
 
 
 /**
@@ -361,10 +362,8 @@ export default function ChatInterface() {
       const timeoutId = setTimeout(() => {
         setSessions(prev => prev.map(session => {
           if (session.id === activeSessionId && session.messages.length > 0) {
-            const firstMessage = session.messages[0]?.content || content
-            const smartTitle = firstMessage.length > 30
-              ? firstMessage.slice(0, 30) + '...'
-              : firstMessage
+            // Generate smart title without emojis
+            const smartTitle = generateSmartTitle(session.messages)
             return { ...session, title: smartTitle }
           }
           return session

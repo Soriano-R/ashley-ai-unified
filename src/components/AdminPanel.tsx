@@ -756,7 +756,7 @@ export default function AdminPanel({
                         placeholder="Enter DeepL API key"
                         className="w-full bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-white"
                       />
-                      <p className="text-xs text-gray-400 mt-1">500K characters/month free, then €5.99/month</p>
+                      <p className="text-xs text-gray-400 mt-1">500K characters/month free, then $5.99/month</p>
                     </div>
 
                     <div>

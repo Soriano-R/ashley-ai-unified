@@ -468,9 +468,9 @@ export default function ChatArea({ messages, onSendMessage, isLoading, persona =
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-gray-900">
-      {/* Messages Display Area */}
-      <div className="flex-1 overflow-y-auto p-4">
+    <div className="flex-1 flex flex-col bg-gray-900 h-full">
+      {/* Messages Display Area - Fixed height with scroll */}
+      <div className="flex-1 overflow-y-auto p-4 min-h-0">
         {/* Show welcome message when no messages exist */}
         {messages.length === 0 ? (
           <div className="flex items-center justify-center h-full">

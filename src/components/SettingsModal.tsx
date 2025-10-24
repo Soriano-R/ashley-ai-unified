@@ -34,6 +34,7 @@ export default function SettingsModal({ isOpen, onClose, user }: SettingsModalPr
     
     // Avatar & Visual
     userAvatar: 'initials', // 'initials', 'uploaded', 'generated'
+    customAvatarUrl: '', // Store uploaded avatar image as base64 or URL
     avatarColor: 'blue',
     chatBubbleStyle: 'modern', // 'modern', 'classic', 'minimal'
     chatWidth: 'medium', // 'narrow', 'medium', 'wide'
@@ -405,6 +406,39 @@ export default function SettingsModal({ isOpen, onClose, user }: SettingsModalPr
                             <option value="generated">AI Generated Avatar</option>
                           </select>
                         </div>
+
+                        {/* Upload Custom Avatar Image */}
+                        {settings.userAvatar === 'uploaded' && (
+                          <div className="bg-gray-800 border border-gray-600 rounded-md p-4">
+                            <label className="block text-sm font-medium text-gray-300 mb-2">Upload Custom Image</label>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0]
+                                if (file) {
+                                  const reader = new FileReader()
+                                  reader.onload = (event) => {
+                                    const imageUrl = event.target?.result as string
+                                    updateSetting('customAvatarUrl', imageUrl)
+                                  }
+                                  reader.readAsDataURL(file)
+                                }
+                              }}
+                              className="w-full text-sm text-gray-300 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700"
+                            />
+                            {settings.customAvatarUrl && (
+                              <div className="mt-3">
+                                <p className="text-xs text-gray-400 mb-2">Preview:</p>
+                                <img
+                                  src={settings.customAvatarUrl}
+                                  alt="Avatar preview"
+                                  className="w-16 h-16 rounded-full object-cover border-2 border-gray-600"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         <div>
                           <label className="block text-sm font-medium text-gray-300 mb-2">Avatar Color</label>
