@@ -275,17 +275,20 @@ class PyTorchModelManager:
         model_config = self.config["models"][model_id]
         model_name = model_config["model_name"]
 
-        # Special handling for API-based models (OpenAI, OpenRouter)
+        # Special handling for API-based models (OpenAI, OpenRouter, Image models)
         if model_id == "openai" or model_id.startswith("openrouter-"):
             provider = "OpenRouter" if model_id.startswith("openrouter-") else "OpenAI"
-            logger.info(f"Configuring {provider} API-based model (no local loading): {model_id}")
+            model_type = "Image Generation" if model_config.get("format") == "openrouter-image" else "Chat"
+            logger.info(f"Configuring {provider} API-based {model_type} model (no local loading): {model_id}")
             self.models[model_id] = {
                 "model": None,
                 "tokenizer": None,
                 "config": model_config,
                 "loaded": True,
                 "load_time": datetime.now().isoformat(),
-                "api": True
+                "api": True,
+                "capabilities": model_config.get("capabilities", []),
+                "modalities": model_config.get("modalities", ["text"])
             }
             self.current_model = None
             self.current_tokenizer = None

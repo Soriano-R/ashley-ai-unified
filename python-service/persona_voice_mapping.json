@@ -1,0 +1,72 @@
+{
+  "description": "Maps each persona to specific voice characteristics for TTS (Text-to-Speech)",
+  "voice_mappings": {
+    "ashley-girlfriend": {
+      "voice_description": "Warm, friendly, affectionate female voice",
+      "gender": "female",
+      "age_range": "young_adult",
+      "tone": "warm",
+      "speaking_rate": "normal",
+      "pitch": "medium-high",
+      "coqui_speaker": "female-1",
+      "elevenlabs_voice_id": null,
+      "sample_audio_path": "voices/ashley-girlfriend.wav"
+    },
+    "ashley-girlfriend-explicit": {
+      "voice_description": "Seductive, sultry, playful female voice",
+      "gender": "female",
+      "age_range": "young_adult",
+      "tone": "sultry",
+      "speaking_rate": "slow",
+      "pitch": "medium-low",
+      "coqui_speaker": "female-2",
+      "elevenlabs_voice_id": null,
+      "sample_audio_path": "voices/ashley-girlfriend-explicit.wav"
+    },
+    "ashley-data-analyst": {
+      "voice_description": "Professional, clear, analytical female voice",
+      "gender": "female",
+      "age_range": "adult",
+      "tone": "professional",
+      "speaking_rate": "normal",
+      "pitch": "medium",
+      "coqui_speaker": "female-3",
+      "elevenlabs_voice_id": null,
+      "sample_audio_path": "voices/ashley-data-analyst.wav"
+    },
+    "ashley-data-scientist": {
+      "voice_description": "Intelligent, articulate, confident female voice",
+      "gender": "female",
+      "age_range": "adult",
+      "tone": "confident",
+      "speaking_rate": "slightly-fast",
+      "pitch": "medium",
+      "coqui_speaker": "female-4",
+      "elevenlabs_voice_id": null,
+      "sample_audio_path": "voices/ashley-data-scientist.wav"
+    }
+  },
+  "default_voice": {
+    "voice_description": "Neutral, friendly female voice",
+    "gender": "female",
+    "age_range": "adult",
+    "tone": "neutral",
+    "speaking_rate": "normal",
+    "pitch": "medium",
+    "coqui_speaker": "female-default",
+    "sample_audio_path": null
+  },
+  "tts_config": {
+    "engine": "coqui",
+    "model": "tts_models/multilingual/multi-dataset/xtts_v2",
+    "language": "en",
+    "streaming": true,
+    "cache_voices": true
+  },
+  "notes": [
+    "To use custom voice cloning, provide 10+ second audio samples in the sample_audio_path",
+    "Coqui XTTS-v2 supports voice cloning with minimal sample audio",
+    "ElevenLabs voice_id can be configured for paid API alternative",
+    "Voice samples should be clear, with consistent tone and minimal background noise"
+  ]
+}

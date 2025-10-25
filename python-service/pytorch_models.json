@@ -324,6 +324,18 @@
       "categories": ["general"],
       "capabilities": ["general", "creative", "coding"],
       "trainable": false
+    },
+    "openrouter-gemini-image-free": {
+      "model_name": "google/gemini-2.5-flash-image-preview:free",
+      "display_name": "Gemini 2.5 Flash Image (Free)",
+      "max_length": 8192,
+      "quantization": "api",
+      "format": "openrouter-image",
+      "description": "Google's image generation model with contextual understanding. Generates 1024x1024 images. Free tier.",
+      "categories": ["general"],
+      "capabilities": ["image-generation", "creative"],
+      "trainable": false,
+      "modalities": ["image", "text"]
     }
   },
   "default_model": "mistral-7b",
