@@ -234,9 +234,11 @@ export default function AdminPanel({
     apiKeys: {
       openai: 'sk-...hidden',
       microsoftTranslator: '',
+      microsoftTranslatorRegion: '',
       googleTranslate: '',
       deepl: '',
-      anthropic: ''
+      anthropic: '',
+      openrouter: ''
     },
     
     // Translation Settings
@@ -736,6 +738,18 @@ export default function AdminPanel({
                     </div>
 
                     <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Microsoft Translator Region</label>
+                      <input
+                        type="text"
+                        value={adminSettings.apiKeys.microsoftTranslatorRegion || ''}
+                        onChange={(e) => updateNestedSetting('apiKeys', '', 'microsoftTranslatorRegion', e.target.value)}
+                        placeholder="e.g., eastus, westus, westeurope"
+                        className="w-full bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-white"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">Azure region where your Cognitive Services resource is deployed</p>
+                    </div>
+
+                    <div>
                       <label className="block text-sm font-medium text-gray-300 mb-2">Google Translate API Key</label>
                       <input
                         type="password"
@@ -768,6 +782,18 @@ export default function AdminPanel({
                         placeholder="Enter Anthropic API key"
                         className="w-full bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-white"
                       />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">OpenRouter API Key</label>
+                      <input
+                        type="password"
+                        value={adminSettings.apiKeys.openrouter || ''}
+                        onChange={(e) => updateNestedSetting('apiKeys', '', 'openrouter', e.target.value)}
+                        placeholder="Enter OpenRouter API key"
+                        className="w-full bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-white"
+                      />
+                      <p className="text-xs text-gray-400 mt-1">Access to multiple AI models through a single API</p>
                     </div>
                   </div>
                 </div>
