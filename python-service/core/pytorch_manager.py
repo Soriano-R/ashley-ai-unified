@@ -275,9 +275,10 @@ class PyTorchModelManager:
         model_config = self.config["models"][model_id]
         model_name = model_config["model_name"]
 
-        # Special handling for OpenAI API-based model
-        if model_id == "openai":
-            logger.info("Configuring OpenAI API-based model (no local loading)")
+        # Special handling for API-based models (OpenAI, OpenRouter)
+        if model_id == "openai" or model_id.startswith("openrouter-"):
+            provider = "OpenRouter" if model_id.startswith("openrouter-") else "OpenAI"
+            logger.info(f"Configuring {provider} API-based model (no local loading): {model_id}")
             self.models[model_id] = {
                 "model": None,
                 "tokenizer": None,
