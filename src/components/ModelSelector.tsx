@@ -61,8 +61,31 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     setIsOpen(false)
   }
 
+  // Helper function to determine model provider
+  const getModelProvider = (model: ModelOption): string => {
+    // Check if it's OpenAI
+    if (model.id === 'openai' || model.model_name?.includes('gpt')) {
+      return 'OpenAI'
+    }
+    // Check if it's a local HuggingFace model
+    if (model.format === 'pytorch' || model.format === 'gguf' || model.format === 'gptq') {
+      return 'Local'
+    }
+    // Check for specific providers
+    if (model.model_name?.includes('claude') || model.model_name?.includes('anthropic')) {
+      return 'Anthropic'
+    }
+    if (model.model_name?.includes('openrouter') || model.id?.includes('openrouter')) {
+      return 'OpenRouter'
+    }
+    // Default
+    return 'Cloud'
+  }
+
   const renderModelRow = (model: ModelOption) => {
     const isSelected = selectedModelId === model.id
+    const provider = getModelProvider(model)
+
     return (
       <button
         key={model.id}
@@ -75,8 +98,11 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="font-semibold text-gray-900">{model.name}</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold uppercase tracking-wide">
+                {provider}
+              </span>
               <span className="text-[10px] uppercase tracking-wide text-gray-400">
                 {model.format?.toUpperCase() ?? model.quantization?.toUpperCase()}
               </span>
