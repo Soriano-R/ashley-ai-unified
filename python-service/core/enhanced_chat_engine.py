@@ -131,9 +131,44 @@ class EnhancedChatEngine:
             'find information', 'what happened', 'breaking',
             'update', 'happening', 'trending', 'status of'
         ]
-        
+
         message_lower = message.lower()
         return any(keyword in message_lower for keyword in internet_keywords)
+
+    def _is_token_limit_error(self, error_message: str) -> bool:
+        """Detect if error is related to token limits or quota"""
+        error_lower = str(error_message).lower()
+        token_error_indicators = [
+            'quota', 'rate limit', 'token limit', 'insufficient_quota',
+            'rate_limit_exceeded', 'out of tokens', 'exceeded your current quota',
+            'billing', 'credit', 'insufficient credits', 'max tokens',
+            'context length', 'context_length_exceeded', '402', '429',
+            'too many tokens', 'token quota'
+        ]
+        return any(indicator in error_lower for indicator in token_error_indicators)
+
+    def _get_fallback_model(self, failed_model: str, allowed_models: List[str]) -> Optional[str]:
+        """Get next available model for fallback"""
+        # Priority order for fallback: Local models first, then free APIs, then paid APIs
+        fallback_priority = [
+            # Local models (free, always available)
+            'mistral-7b', 'qwen-2.5-7b', 'mistral-7b-gguf', 'qwen-2.5-7b-gguf',
+            # Free API models (OpenRouter)
+            'openrouter-mistral-7b-free', 'openrouter-phi-3-free',
+            'openrouter-llama-3-8b-free', 'openrouter-qwen-7b-free',
+            'openrouter-gemma-7b-free',
+            # Paid API fallback
+            'openai',
+        ]
+
+        for candidate in fallback_priority:
+            if candidate != failed_model and candidate in allowed_models:
+                if self._is_model_available(candidate):
+                    logger.info(f"Found fallback model: {candidate}")
+                    return candidate
+
+        logger.warning("No fallback model available")
+        return None
 
     def _build_context_pairs(self, history: Optional[List[Dict[str, str]]]) -> List[Dict[str, str]]:
         """Convert message history into paired user/assistant exchanges."""
@@ -311,6 +346,9 @@ Be helpful, engaging, and maintain the personality characteristics of {persona_l
             "sources": [],
             "generation_time": 0,
             "error": None,
+            "model_switched": False,
+            "original_model": selected_model_id,
+            "fallback_reason": None,
         }
 
         try:
@@ -378,9 +416,27 @@ Be helpful, engaging, and maintain the personality characteristics of {persona_l
                     response_data["model_used"] = selected_model_id or "openai"
                 except Exception as e:
                     logger.error(f"OpenAI API generation failed: {e}")
-                    response_data["response"] = self._generate_fallback_response(message, persona_meta)
-                    response_data["model_used"] = "fallback"
-                    response_data["error"] = f"OpenAI API error: {str(e)}"
+                    # Check if it's a token/quota error and try fallback
+                    if self._is_token_limit_error(str(e)):
+                        logger.warning(f"Token limit error detected for OpenAI, attempting fallback...")
+                        fallback_model = self._get_fallback_model("openai", allowed_models)
+                        if fallback_model:
+                            response_data["model_switched"] = True
+                            response_data["fallback_reason"] = "OpenAI token/quota limit exceeded"
+                            logger.info(f"Switching to fallback model: {fallback_model}")
+                            # Recursive call with fallback model
+                            fallback_result = await self.generate_response(
+                                message, persona_name, use_internet, fallback_model, history, **generation_kwargs
+                            )
+                            return fallback_result
+                        else:
+                            response_data["response"] = self._generate_fallback_response(message, persona_meta)
+                            response_data["model_used"] = "fallback"
+                            response_data["error"] = f"OpenAI quota exceeded, no fallback available: {str(e)}"
+                    else:
+                        response_data["response"] = self._generate_fallback_response(message, persona_meta)
+                        response_data["model_used"] = "fallback"
+                        response_data["error"] = f"OpenAI API error: {str(e)}"
             elif selected_model_id and selected_model_id.startswith("openrouter-"):
                 # Use OpenRouter API for free models
                 try:
@@ -425,9 +481,27 @@ Be helpful, engaging, and maintain the personality characteristics of {persona_l
                     logger.info(f"✓ OpenRouter response generated successfully with {openrouter_model_name}")
                 except Exception as e:
                     logger.error(f"OpenRouter API generation failed: {e}")
-                    response_data["response"] = self._generate_fallback_response(message, persona_meta)
-                    response_data["model_used"] = "fallback"
-                    response_data["error"] = f"OpenRouter API error: {str(e)}"
+                    # Check if it's a token/quota error and try fallback
+                    if self._is_token_limit_error(str(e)):
+                        logger.warning(f"Token limit error detected for {selected_model_id}, attempting fallback...")
+                        fallback_model = self._get_fallback_model(selected_model_id, allowed_models)
+                        if fallback_model:
+                            response_data["model_switched"] = True
+                            response_data["fallback_reason"] = f"{selected_model_id} rate limit exceeded"
+                            logger.info(f"Switching to fallback model: {fallback_model}")
+                            # Recursive call with fallback model
+                            fallback_result = await self.generate_response(
+                                message, persona_name, use_internet, fallback_model, history, **generation_kwargs
+                            )
+                            return fallback_result
+                        else:
+                            response_data["response"] = self._generate_fallback_response(message, persona_meta)
+                            response_data["model_used"] = "fallback"
+                            response_data["error"] = f"OpenRouter quota exceeded, no fallback available: {str(e)}"
+                    else:
+                        response_data["response"] = self._generate_fallback_response(message, persona_meta)
+                        response_data["model_used"] = "fallback"
+                        response_data["error"] = f"OpenRouter API error: {str(e)}"
             else:
                 response_data["response"] = self._generate_fallback_response(message, persona_meta)
                 response_data["model_used"] = "fallback"

@@ -9,6 +9,7 @@ import AdminPanel from './AdminPanel'
 import PersonaSelector from './PersonaSelector'
 import ModelSelector from './ModelSelector'
 import UserManager from './UserManager'
+import NotificationToast, { Notification } from './NotificationToast'
 import { Message, ModelOption, PersonaOption, Session, User } from '@/types'
 import { DEFAULT_PERSONA_ID } from '@/lib/personas'
 import { apiClient } from '@/lib/apiClient'
@@ -37,9 +38,25 @@ export default function ChatInterface() {
   // Chat generation/loading state
   const [isGenerating, setIsGenerating] = useState(false)
 
+  // Notification state
+  const [notifications, setNotifications] = useState<Notification[]>([])
+
   // Handler to open UserManager modal
   const handleOpenUserManager = () => setIsUserManagerOpen(true)
   const handleCloseUserManager = () => setIsUserManagerOpen(false)
+
+  // Notification handlers
+  const addNotification = useCallback((notification: Omit<Notification, 'id'>) => {
+    const newNotification: Notification = {
+      ...notification,
+      id: Date.now().toString() + Math.random().toString(36),
+    }
+    setNotifications(prev => [...prev, newNotification])
+  }, [])
+
+  const dismissNotification = useCallback((id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id))
+  }, [])
   
   // State for all chat sessions - starts with one default session
   const [sessions, setSessions] = useState<Session[]>([
@@ -391,6 +408,17 @@ export default function ChatInterface() {
       )
 
       const data = response as any
+
+      // Check if model was automatically switched due to token limits
+      if (data?.model_switched && data?.fallback_reason && data?.model_used) {
+        addNotification({
+          type: 'warning',
+          title: 'Model Switched',
+          message: `${data.fallback_reason}. Automatically switched to ${data.model_used}.`,
+          duration: 5000,
+        })
+      }
+
       const assistantText: string =
         typeof data?.message === 'string'
           ? data.message
@@ -591,6 +619,11 @@ export default function ChatInterface() {
   return (
     // Main application container - full height with dark background
     <div className="flex h-screen bg-gray-900 text-white">
+      {/* Notification Toast */}
+      <NotificationToast
+        notifications={notifications}
+        onDismiss={dismissNotification}
+      />
       {/* Left sidebar for session navigation */}
       <Sidebar 
         sessions={sessions}
