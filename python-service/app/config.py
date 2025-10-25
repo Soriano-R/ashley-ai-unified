@@ -135,6 +135,14 @@ class Settings(BaseSettings):
     tavily_api_key: Optional[str] = Field(default=None, env="TAVILY_API_KEY")
     serpapi_api_key: Optional[str] = Field(default=None, env="SERPAPI_API_KEY")
 
+    # Translation API keys
+    microsoft_translator_key: Optional[str] = Field(default=None, env="MICROSOFT_TRANSLATOR_KEY")
+    microsoft_translator_region: Optional[str] = Field(default=None, env="MICROSOFT_TRANSLATOR_REGION")
+    deepl_api_key: Optional[str] = Field(default=None, env="DEEPL_API_KEY")
+
+    # OpenRouter API key
+    openrouter_api_key: Optional[str] = Field(default=None, env="OPENROUTER_API_KEY")
+
     class Config:
         files = [str(path) for path in (ENV_PATH, HF_ENV_PATH) if path.exists()]
         env_file = files or None
