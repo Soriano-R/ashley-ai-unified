@@ -381,6 +381,53 @@ Be helpful, engaging, and maintain the personality characteristics of {persona_l
                     response_data["response"] = self._generate_fallback_response(message, persona_meta)
                     response_data["model_used"] = "fallback"
                     response_data["error"] = f"OpenAI API error: {str(e)}"
+            elif selected_model_id and selected_model_id.startswith("openrouter-"):
+                # Use OpenRouter API for free models
+                try:
+                    import requests
+                    openrouter_api_key = os.getenv('OPENROUTER_API_KEY')
+                    if not openrouter_api_key:
+                        raise ValueError("OPENROUTER_API_KEY not configured")
+
+                    # Get model config to find the actual OpenRouter model name
+                    model_config = self.pytorch_manager.config.get("models", {}).get(selected_model_id, {})
+                    openrouter_model_name = model_config.get("model_name", "mistralai/mistral-7b-instruct:free")
+
+                    logger.info(f"Using OpenRouter free model: {openrouter_model_name}")
+
+                    headers = {
+                        "Authorization": f"Bearer {openrouter_api_key}",
+                        "Content-Type": "application/json",
+                    }
+
+                    payload = {
+                        "model": openrouter_model_name,
+                        "messages": [{"role": "user", "content": enhanced_prompt}],
+                        "max_tokens": generation_kwargs.get('max_new_tokens', 1024),
+                        "temperature": generation_kwargs.get('temperature', 0.7),
+                        "top_p": generation_kwargs.get('top_p', 0.9),
+                    }
+
+                    def call_openrouter():
+                        response = requests.post(
+                            "https://openrouter.ai/api/v1/chat/completions",
+                            headers=headers,
+                            json=payload,
+                            timeout=60
+                        )
+                        response.raise_for_status()
+                        return response.json()
+
+                    result = await asyncio.to_thread(call_openrouter)
+                    response_text = result["choices"][0]["message"]["content"]
+                    response_data["response"] = response_text
+                    response_data["model_used"] = selected_model_id
+                    logger.info(f"✓ OpenRouter response generated successfully with {openrouter_model_name}")
+                except Exception as e:
+                    logger.error(f"OpenRouter API generation failed: {e}")
+                    response_data["response"] = self._generate_fallback_response(message, persona_meta)
+                    response_data["model_used"] = "fallback"
+                    response_data["error"] = f"OpenRouter API error: {str(e)}"
             else:
                 response_data["response"] = self._generate_fallback_response(message, persona_meta)
                 response_data["model_used"] = "fallback"

@@ -18,26 +18,6 @@
     }
   },
   "models": {
-    "llama-3.1-70b": {
-      "model_name": "meta-llama/Meta-Llama-3.1-70B-Instruct",
-      "display_name": "Llama 3.1 70B (HF)",
-      "max_length": 8192,
-      "quantization": "pytorch",
-      "format": "pytorch",
-      "description": "Large general-purpose assistant with deep reasoning ability.",
-      "categories": ["general", "ml-ai"],
-      "capabilities": ["general", "analysis", "reasoning"]
-    },
-    "llama-3.1-70b-gguf": {
-      "model_name": "meta-llama/Meta-Llama-3.1-70B-Instruct-GGUF",
-      "display_name": "Llama 3.1 70B (GGUF)",
-      "max_length": 8192,
-      "quantization": "gguf",
-      "format": "gguf",
-      "description": "Quantised GGUF variant of Llama 3.1 70B for CPU/offline use.",
-      "categories": ["general", "ml-ai"],
-      "capabilities": ["general", "analysis", "reasoning"]
-    },
     "qwen-2.5-7b": {
       "model_name": "Qwen/Qwen2.5-7B-Instruct",
       "display_name": "Qwen 2.5 7B Instruct",
@@ -64,9 +44,10 @@
       "max_length": 8192,
       "quantization": "pytorch",
       "format": "pytorch",
-      "description": "Fast, lightweight assistant ideal for friendly dialogue.",
+      "description": "Fast, lightweight assistant ideal for friendly dialogue. (Trainable)",
       "categories": ["general"],
-      "capabilities": ["general", "creative"]
+      "capabilities": ["general", "creative"],
+      "trainable": true
     },
     "mistral-7b-gguf": {
       "model_name": "mistralai/Mistral-7B-Instruct-v0.2-GGUF",
@@ -286,7 +267,63 @@
       "format": "api",
       "description": "Cloud fallback model via OpenAI API.",
       "categories": ["general"],
-      "capabilities": ["general"]
+      "capabilities": ["general"],
+      "trainable": false
+    },
+    "openrouter-mistral-7b-free": {
+      "model_name": "mistralai/mistral-7b-instruct:free",
+      "display_name": "Mistral 7B Instruct (Free)",
+      "max_length": 8192,
+      "quantization": "api",
+      "format": "openrouter",
+      "description": "Fast 7B parameter model optimized for instruction following. Free tier via OpenRouter.",
+      "categories": ["general"],
+      "capabilities": ["general", "creative"],
+      "trainable": false
+    },
+    "openrouter-phi-3-free": {
+      "model_name": "microsoft/phi-3-mini-128k-instruct:free",
+      "display_name": "Phi-3 Mini (Free)",
+      "max_length": 128000,
+      "quantization": "api",
+      "format": "openrouter",
+      "description": "Microsoft's compact but powerful model with massive 128K context window. Free tier.",
+      "categories": ["general", "data-analytics"],
+      "capabilities": ["general", "analysis", "coding"],
+      "trainable": false
+    },
+    "openrouter-gemma-7b-free": {
+      "model_name": "google/gemma-7b-it:free",
+      "display_name": "Gemma 7B IT (Free)",
+      "max_length": 8192,
+      "quantization": "api",
+      "format": "openrouter",
+      "description": "Google's open-source instruction-tuned model. Free tier via OpenRouter.",
+      "categories": ["general"],
+      "capabilities": ["general", "creative"],
+      "trainable": false
+    },
+    "openrouter-qwen-7b-free": {
+      "model_name": "qwen/qwen-2-7b-instruct:free",
+      "display_name": "Qwen 2 7B Instruct (Free)",
+      "max_length": 32768,
+      "quantization": "api",
+      "format": "openrouter",
+      "description": "Alibaba's multilingual model with strong performance. Free tier.",
+      "categories": ["general", "data-analytics"],
+      "capabilities": ["general", "multilingual", "analysis"],
+      "trainable": false
+    },
+    "openrouter-llama-3-8b-free": {
+      "model_name": "meta-llama/llama-3-8b-instruct:free",
+      "display_name": "Llama 3 8B Instruct (Free)",
+      "max_length": 8192,
+      "quantization": "api",
+      "format": "openrouter",
+      "description": "Meta's open-source model with strong general capabilities. Free tier.",
+      "categories": ["general"],
+      "capabilities": ["general", "creative", "coding"],
+      "trainable": false
     }
   },
   "default_model": "mistral-7b",

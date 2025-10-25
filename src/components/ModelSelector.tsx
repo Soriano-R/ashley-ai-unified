@@ -63,8 +63,12 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
 
   // Helper function to determine model provider
   const getModelProvider = (model: ModelOption): string => {
+    // Check if it's OpenRouter (check format first for API models)
+    if (model.format === 'openrouter' || model.id?.startsWith('openrouter-')) {
+      return 'OpenRouter'
+    }
     // Check if it's OpenAI
-    if (model.id === 'openai' || model.model_name?.includes('gpt')) {
+    if (model.id === 'openai' || model.format === 'api' || model.model_name?.includes('gpt')) {
       return 'OpenAI'
     }
     // Check if it's a local HuggingFace model
@@ -74,9 +78,6 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
     // Check for specific providers
     if (model.model_name?.includes('claude') || model.model_name?.includes('anthropic')) {
       return 'Anthropic'
-    }
-    if (model.model_name?.includes('openrouter') || model.id?.includes('openrouter')) {
-      return 'OpenRouter'
     }
     // Default
     return 'Cloud'
